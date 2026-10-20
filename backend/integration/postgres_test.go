@@ -8,6 +8,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +29,16 @@ import (
 
 const databaseEnv = "KHA41_TEST_DATABASE_URL"
 
+// randomSchemaSuffix returns a short random suffix for an isolated test
+// schema name.
+func randomSchemaSuffix() string {
+	var raw [4]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "fallback"
+	}
+	return hex.EncodeToString(raw[:])
+}
+
 func testPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dsn := os.Getenv(databaseEnv)
@@ -47,7 +58,11 @@ func testPool(t *testing.T) *pgxpool.Pool {
 		admin.Close()
 		t.Fatalf("ping isolated PostgreSQL: %v", err)
 	}
-	schema := fmt.Sprintf("kha41_%d", time.Now().UnixNano())
+	// The isolated schema name must be unique even when two test processes
+	// run against the same database at the same time. The host wall clock
+	// has a coarse resolution on some systems, so the name carries a random
+	// suffix instead of relying on the timestamp alone.
+	schema := fmt.Sprintf("kha41_%d_%s", time.Now().UnixNano(), randomSchemaSuffix())
 	if _, err = admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
 		admin.Close()
 		t.Fatalf("create test schema: %v", err)

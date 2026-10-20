@@ -22,6 +22,7 @@ export interface ProtocolDecoderState {
   otherChoices: unknown[];
   unknownEvents: ProtocolRawEvent[];
   malformed: boolean;
+  validationIssues: Array<{ eventIndex: number; reason: string }>;
 }
 
 export function createProtocolState(): ProtocolDecoderState {
@@ -40,6 +41,7 @@ export function createProtocolState(): ProtocolDecoderState {
     otherChoices: [],
     unknownEvents: [],
     malformed: false,
+    validationIssues: [],
   };
 }
 
@@ -107,6 +109,7 @@ export function createSseProtocolDecoder(
         toolRecords: [...state.toolRecords],
         otherChoices: [...state.otherChoices],
         unknownEvents: [...state.unknownEvents],
+        ...(state.validationIssues.length ? { validationIssues: state.validationIssues.map(issue => ({ ...issue })) } : {}),
         raw: {
           chunks: chunks.map((entry) => entry.slice()),
           events: events.map(cloneEvent),

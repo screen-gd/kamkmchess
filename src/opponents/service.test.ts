@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { bindCredentialValues, captureCredentialBindingGeneration, createCredentialBindingOwner } from '../providers/connections/credential-binding.js';
 import { recordDisclosureChoice } from '../providers/connections/disclosure.js';
 import { updateCatalogSnapshot } from '../providers/connections/catalog-cache.js';
@@ -14,16 +14,17 @@ async function setup(
   credentialStatus: 'bound' | 'missing' = 'bound',
   catalogPagination: 'none' | 'after' | 'after_id' = 'none',
   initialCatalog: ConnectionCatalogSnapshot | undefined = undefined,
+  apiKey?: string,
 ) {
   const profile = await createConnectionProfile({
     id: 'route-a', name: 'Test route', provider: 'openrouter', baseUrl: 'https://proxy.example/v1',
-    protocol: 'chat-completions', auth: { kind: 'none' }, catalogPagination,
+    protocol: 'chat-completions', auth: { kind: apiKey ? 'bearer' : 'none' }, catalogPagination,
   });
   const owner = createCredentialBindingOwner();
   const credentials = bindCredentialValues({
     profileId: profile.id, configRevision: profile.configRevision, credentialRevision: 7,
     ...getConnectionEndpoints(profile),
-  }, {}, captureCredentialBindingGeneration(owner, 'guest', profile.id));
+  }, apiKey ? { apiKey } : {}, captureCredentialBindingGeneration(owner, 'guest', profile.id));
   const disclosure = recordDisclosureChoice(profile, { decision: 'accepted', recordedAtMs: 1 });
   let catalogSnapshot = initialCatalog;
   const connectionStore = {
@@ -61,6 +62,93 @@ function validDiagnosticResponse(init: RequestInit): Response {
 }
 
 describe('OpponentService', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  function diagnosticLogs() {
+    return [...vi.mocked(console.info).mock.calls, ...vi.mocked(console.warn).mock.calls]
+      .filter(([prefix]) => prefix === '[model-diagnostic]')
+      .map(([, entry]) => entry as Record<string, unknown>);
+  }
+
+  it('logs JSON credit errors with correlation and redacts echoed credentials', async () => {
+    const apiKey = 'router-private-canary';
+    const { service } = await setup(async () => Response.json({
+      error: { code: 402, message: `Insufficient credits for Bearer ${apiKey}`, metadata: { provider_name: 'MiniMax', raw: 'private provider body' } },
+    }, { status: 402, headers: { 'x-request-id': 'request-402', 'retry-after': '30' } }), undefined, 'bound', 'none', undefined, apiKey);
+    const result = await service.runCompatibilityDiagnostic({ profileId: 'route-a', modelId: 'minimax/model:free' });
+    expect(result.evidence.state).toBe('temporary-failure');
+    expect(result.evidence.detail).toContain('credit');
+    expect(diagnosticLogs()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event: 'request', diagnosticId: 'diag-1', provider: 'openrouter', modelId: 'minimax/model:free', maxOutputTokens: 256 }),
+      expect.objectContaining({ event: 'response', diagnosticId: 'diag-1', httpStatus: 402, requestId: 'request-402', retryAfter: '30' }),
+      expect.objectContaining({ event: 'result', diagnosticId: 'diag-1', failureKind: 'credits', providerErrors: [expect.objectContaining({ code: 402, message: expect.stringContaining('[redacted]'), provider: 'MiniMax' })] }),
+    ]));
+    const output = JSON.stringify(diagnosticLogs());
+    expect(output).not.toContain(apiKey);
+    expect(output).not.toContain('private provider body');
+    expect(output).not.toContain('messages');
+  });
+
+  it('distinguishes a completed contract mismatch from an HTTP or credit failure without logging answers', async () => {
+    const { service } = await setup(async () => streamResponse('{"move":"e2e4","plan":"private-answer","marker":"wrong"}'));
+    const result = await service.runCompatibilityDiagnostic({ profileId: 'route-a', modelId: 'model' });
+    expect(result.evidence.state).toBe('incompatible');
+    expect(diagnosticLogs()).toContainEqual(expect.objectContaining({
+      event: 'result', failureKind: 'contract', httpStatus: 200, terminal: 'complete', content: 'answer',
+      contract: { validJsonObject: true, coordinateMatches: true, priorPlanMatches: false, markerMatches: false },
+    }));
+    expect(JSON.stringify(diagnosticLogs())).not.toContain('private-answer');
+  });
+
+  it('logs an in-stream provider error even when the HTTP response is successful', async () => {
+    const { service } = await setup(async () => new Response('data: {"error":{"code":429,"message":"Provider rate limit exceeded"}}\n\ndata: [DONE]\n\n', {
+      headers: { 'content-type': 'text/event-stream' },
+    }));
+    await service.runCompatibilityDiagnostic({ profileId: 'route-a', modelId: 'model' });
+    expect(diagnosticLogs()).toContainEqual(expect.objectContaining({
+      event: 'result', failureKind: 'rate-limit', httpStatus: 200, terminal: 'failed',
+      providerErrors: [expect.objectContaining({ code: 429, message: 'Provider rate limit exceeded' })],
+    }));
+  });
+
+  it('records length exhaustion separately from contract failure', async () => {
+    const { service } = await setup(async () => new Response('data: {"choices":[{"index":0,"delta":{"reasoning":"private reasoning"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n'));
+    await service.runCompatibilityDiagnostic({ profileId: 'route-a', modelId: 'model' });
+    expect(diagnosticLogs()).toContainEqual(expect.objectContaining({
+      event: 'result', failureKind: 'output-limit', terminal: 'incomplete', reasoningCharacters: 17, finishReasons: ['length'],
+    }));
+    expect(JSON.stringify(diagnosticLogs())).not.toContain('private reasoning');
+  });
+
+  it('passes the compatibility check with the documented OpenRouter final usage chunk', async () => {
+    const { service } = await setup(async (_url, init) => {
+      const answer = await validDiagnosticResponse(init).text();
+      const usage = 'data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"stop"}],"usage":{"completion_tokens":80}}\n\n';
+      return new Response(answer.replace('data: [DONE]', `${usage}data: [DONE]`));
+    });
+    const result = await service.runCompatibilityDiagnostic({ profileId: 'route-a', modelId: 'minimax/model:free' });
+    expect(result.evidence.state).toBe('passed-current-session');
+    await expect(service.prepareSelection({ profileId: 'route-a', modelId: 'minimax/model:free' })).resolves.toMatchObject({ queued: { identity: { modelId: 'minimax/model:free' } } });
+  });
+
+  it('checks JSON independently of stream validity and logs the exact rejection reason', async () => {
+    const { service } = await setup(async () => {
+      const answer = await streamResponse('{"move":"e2e4"}').text();
+      return new Response(answer.replace('data: [DONE]', 'data: {"choices":[{"index":0,"delta":{"content":"private late answer"},"finish_reason":"stop"}]}\n\ndata: [DONE]'));
+    });
+    const result = await service.runCompatibilityDiagnostic({ profileId: 'route-a', modelId: 'model' });
+    expect(result.evidence.state).not.toBe('passed-current-session');
+    expect(diagnosticLogs()).toContainEqual(expect.objectContaining({
+      event: 'result', terminal: 'malformed', validationIssues: [{ eventIndex: 2, reason: 'choice-output-after-finish' }],
+      contract: { validJsonObject: true, coordinateMatches: true, priorPlanMatches: false, markerMatches: false },
+    }));
+    expect(JSON.stringify(diagnosticLogs())).not.toContain('private late answer');
+  });
+
   it('runs one disclosed marker request with a unique prior-plan record and preserves requested/reported routing IDs', async () => {
     let calls = 0;
     let requestBody: Record<string, unknown> | undefined;
@@ -80,6 +168,7 @@ describe('OpponentService', () => {
     expect(result.expected.marker).toMatch(/^KAMKM-COMPAT-/);
     expect(result.expected.priorPlan).toMatch(/^KAMKM-PRIOR-PLAN-/);
     expect(requestBody?.model).toBe('Case/Model-v2');
+    expect(diagnosticLogs()).toContainEqual(expect.objectContaining({ event: 'result', failureKind: null, terminal: 'complete' }));
     expect((requestBody?.messages as Array<{ role: string }>)[1]?.role).toBe('assistant');
     expect((requestBody?.messages as Array<{ role: string }>)[2]?.role).toBe('user');
     await expect(service.prepareSelection({ profileId: 'route-a', modelId: 'casE/Model-v2' })).rejects.toMatchObject({ code: 'diagnostic-required' });
@@ -148,6 +237,7 @@ describe('OpponentService', () => {
     const result = await service.runCompatibilityDiagnostic({ profileId: 'route-a', modelId: 'model' });
     expect(calls).toBe(1);
     expect(result.evidence).toMatchObject({ state: 'temporary-failure', requestCount: 1, requestedModelId: 'model' });
+    expect(diagnosticLogs()).toContainEqual(expect.objectContaining({ event: 'request-failed', errorName: 'TypeError', message: 'offline', aborted: false }));
     await expect(service.prepareSelection({ profileId: 'route-a', modelId: 'model' })).rejects.toMatchObject({ code: 'diagnostic-required' });
     expect(calls).toBe(1);
   });
@@ -157,7 +247,16 @@ describe('OpponentService', () => {
     const { service } = await setup(async () => { calls += 1; return streamResponse(''); }, undefined, 'missing');
     const result = await service.runCompatibilityDiagnostic({ profileId: 'route-a', modelId: 'model' });
     expect(result.evidence).toMatchObject({ state: 'temporary-failure', requestCount: 0, detail: expect.stringContaining('missing') });
+    expect(diagnosticLogs()).toContainEqual(expect.objectContaining({ event: 'blocked', reason: 'credentials', credentialStatus: 'missing' }));
     expect(calls).toBe(0);
+  });
+
+  it('keeps diagnostics functional when console logging throws', async () => {
+    vi.mocked(console.info).mockImplementation(() => { throw new Error('console unavailable'); });
+    vi.mocked(console.warn).mockImplementation(() => { throw new Error('console unavailable'); });
+    const { service } = await setup(async (_url, init) => validDiagnosticResponse(init));
+    const result = await service.runCompatibilityDiagnostic({ profileId: 'route-a', modelId: 'model' });
+    expect(result.evidence.state).toBe('passed-current-session');
   });
 
   it('reports rejected authentication with an actionable HTTP error and no hidden retry', async () => {

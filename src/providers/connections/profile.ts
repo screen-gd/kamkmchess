@@ -1,4 +1,4 @@
-import { ConnectionError } from './types';
+import { ConnectionError } from './types.js';
 import type {
   ConnectionAuth,
   CatalogPagination,
@@ -7,7 +7,7 @@ import type {
   ConnectionProfile,
   ConnectionProtocol,
   ConnectionProvider,
-} from './types';
+} from './types.js';
 
 const DEFAULT_BASE_URLS = {
   openai: 'https://api.openai.com/v1',

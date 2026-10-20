@@ -13,7 +13,11 @@ export interface ConnectionRouteScope {
 
 export function classifyConnectionRoute(profile: ConnectionProfile): ConnectionRouteScope {
   const { generationUrl } = getConnectionEndpoints(profile);
-  const destination = new URL(generationUrl);
+  return classifyEndpointRoute(generationUrl);
+}
+
+export function classifyEndpointRoute(url: string): ConnectionRouteScope {
+  const destination = new URL(url);
   const host = destination.hostname.toLowerCase().replace(/^\[|\]$/g, '');
   const isLoopback = host === 'localhost' || host.endsWith('.localhost') || host === '::1' || /^127(?:\.\d{1,3}){3}$/.test(host);
   if (destination.protocol === 'http:' && isLoopback) {

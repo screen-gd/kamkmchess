@@ -9,10 +9,11 @@ export interface AccountPanelProps {
   readonly guestImport?: GuestImportPort;
   readonly onIdentityChanged?: () => void;
   readonly onOpenGames?: () => void;
+  readonly onOpenProfile?: (() => void) | undefined;
 }
 
 /** Optional account controls. The parent decides where to mount this panel. */
-export function AccountPanel({ session, guestImport, onIdentityChanged, onOpenGames }: AccountPanelProps) {
+export function AccountPanel({ session, guestImport, onIdentityChanged, onOpenGames, onOpenProfile }: AccountPanelProps) {
   const [identity, setIdentity] = useState(session.identity);
   const [preview, setPreview] = useState<GuestImportPreview | null>(null);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -93,6 +94,7 @@ export function AccountPanel({ session, guestImport, onIdentityChanged, onOpenGa
         <button onClick={() => void signIn()} disabled={busy}>Sign in</button>
       </>}
       {identity && <div className="account-panel-actions">
+        {onOpenProfile && <IconButton icon="account" label="Public profile" onClick={onOpenProfile} disabled={busy} />}
         {onOpenGames && <button onClick={onOpenGames} disabled={busy}>Games</button>}
         {guestImport && <button onClick={() => { setPage(0); void beginImport(); }} disabled={busy}>Import</button>}
         <button onClick={() => void signOut()} disabled={busy}>Sign out</button>

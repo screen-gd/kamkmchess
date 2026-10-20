@@ -58,6 +58,7 @@ export function describeResult(
       case 'threefold-repetition': return 'by threefold repetition';
       case 'fifty-move-rule': return 'by the fifty-move rule';
       case 'dead-position': return 'by insufficient material';
+      case 'draw-agreement': return 'by agreement';
     }
   })();
   const tone: ResultTone = winner === 'draw' ? 'draw' : options.viewer === null ? 'neutral' : winner === options.viewer ? 'win' : 'loss';

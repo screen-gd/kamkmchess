@@ -241,10 +241,10 @@ func validResult(raw json.RawMessage) bool {
 			EventID string      `json:"eventId"`
 			At      json.Number `json:"decidedAtMs"`
 		}
-		if json.Unmarshal(raw, &x) != nil || x.EventID == "" || !validFiniteNumber(x.At) || !oneOf(x.Winner, "white", "black", "draw") || !oneOf(x.Reason, "checkmate", "timeout", "dead-position", "threefold-repetition", "fifty-move-rule", "resignation", "illegal-move", "stalemate") {
+		if json.Unmarshal(raw, &x) != nil || x.EventID == "" || !validFiniteNumber(x.At) || !oneOf(x.Winner, "white", "black", "draw") || !oneOf(x.Reason, "checkmate", "timeout", "dead-position", "threefold-repetition", "fifty-move-rule", "resignation", "illegal-move", "stalemate", "draw-agreement") {
 			return false
 		}
-		return x.Reason != "stalemate" || x.Winner == "draw"
+		return (x.Reason != "stalemate" && x.Reason != "draw-agreement") || x.Winner == "draw"
 	default:
 		return false
 	}

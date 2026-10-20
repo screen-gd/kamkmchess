@@ -2,6 +2,16 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 import { readPublicConfig } from './src/public-config.js';
+import { createProviderRelay } from './server/provider-relay.js';
+import type { Connect } from 'vite';
+
+function providerRelay() {
+  const handler = createProviderRelay();
+  const configure = (server: { middlewares: Connect.Server }) => {
+    server.middlewares.use('/api/provider-relay', handler);
+  };
+  return { name: 'provider-relay', configureServer: configure, configurePreviewServer: configure };
+}
 
 const browserConfig = readPublicConfig({
   accountsEnabled: process.env.KAMKM_PUBLIC_ACCOUNTS_ENABLED === 'true',
@@ -13,7 +23,7 @@ if (process.env.KAMKM_PUBLIC_ACCOUNTS_ENABLED === 'true' && !browserConfig.accou
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), providerRelay()],
   // Public configuration will be allowlisted when hosted accounts are implemented.
   envPrefix: [],
   // Each setting below is public by design. No other environment value enters

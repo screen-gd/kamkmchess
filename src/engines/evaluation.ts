@@ -19,7 +19,10 @@ export class PositionEvaluator {
     if (!this.worker || this.worker.stopped) {
       this.close(); this.worker = new BrowserUciEngine(source);
     }
+    // Keep shallow search swings out of the bar. Publish once the search settles.
+    let settled: EngineEvaluation | undefined;
     await this.worker.analyze({ engineId: id, hashMb: 16, moveTimeMs: 800 }, position,
-      evaluation => { if (!signal.aborted) onEvaluation(evaluation, id); }, signal);
+      evaluation => { settled = evaluation; }, signal);
+    if (settled && !signal.aborted) onEvaluation(settled, id);
   }
 }

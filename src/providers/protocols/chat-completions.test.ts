@@ -88,6 +88,7 @@ describe('Chat Completions protocol decoder', () => {
     expect(result.terminal).toBe('malformed');
     expect(result.answerText).toBe('e2e4');
     expect(result.raw.events[1]?.parseError).toBe('SSE line contains invalid UTF-8.');
+    expect(result.validationIssues).toContainEqual({ eventIndex: 1, reason: 'invalid-event-json-or-utf8' });
     expect(Array.from(result.raw.events[1]?.rawBytes ?? [])).toEqual(
       Array.from(invalid),
     );
@@ -264,6 +265,52 @@ describe('Chat Completions protocol decoder', () => {
     expect(result.raw.events).toHaveLength(4);
   });
 
+  it.each([{}, { content: '' }, { content: null, reasoning: '', reasoning_details: [] }, { content: '', role: 'assistant' }])('[MOV-03] accepts an empty usage trailer after stop: %j', delta => {
+    const trailer = JSON.stringify({
+      choices: [{ index: 0, delta, finish_reason: null }],
+      usage: { prompt_tokens: 40, completion_tokens: 20 },
+    });
+    const result = decodeChat(
+      chatChunk({ index: 0, delta: { content: '{"move":"e2e4"}' }, finish_reason: 'stop' }),
+      trailer,
+      '[DONE]',
+    );
+    expect(result.terminal).toBe('complete');
+    expect(result.answerText).toBe('{"move":"e2e4"}');
+    expect(result.usage).toMatchObject({ completion_tokens: 20 });
+    expect(result.raw.events[1]?.data).toBe(trailer);
+  });
+
+  it('[MOV-03] accepts OpenRouter documented repeated stop and assistant-role usage trailer', () => {
+    const terminal = { index: 0, delta: { content: '', role: 'assistant' }, finish_reason: 'stop', native_finish_reason: 'stop' };
+    const result = decodeChat(
+      chatChunk({ index: 0, delta: { content: 'e2e4' }, finish_reason: null }),
+      chatChunk(terminal),
+      JSON.stringify({ choices: [terminal], usage: { completion_tokens: 20 } }),
+      '[DONE]',
+    );
+    expect(result.terminal).toBe('complete');
+    expect(result.answerText).toBe('e2e4');
+    expect(result.usage).toEqual({ completion_tokens: 20 });
+  });
+
+  it.each([
+    { delta: { content: 'late' }, finish_reason: 'stop' },
+    { delta: { reasoning: 'late reasoning' }, finish_reason: 'stop' },
+    { delta: { tool_calls: [{ id: 'late-tool' }] }, finish_reason: 'stop' },
+    { delta: { content: '' }, finish_reason: 'length' },
+  ])('[MOV-03] rejects output or conflicting finish reasons in a usage trailer: %j', choice => {
+    const result = decodeChat(
+      chatChunk({ index: 0, delta: { content: 'e2e4' }, finish_reason: 'stop' }),
+      JSON.stringify({ choices: [{ index: 0, ...choice }], usage: { completion_tokens: 20 } }),
+      '[DONE]',
+    );
+    expect(result.terminal).toBe('malformed');
+    expect(result.answerText).toBe('e2e4');
+    expect(result.reasoningText).toBe('');
+    expect(result.validationIssues).toContainEqual({ eventIndex: 1, reason: choice.finish_reason === 'length' ? 'conflicting-finish-reason' : 'choice-output-after-finish' });
+  });
+
   it('[MOV-03] does not normalize choice-zero output after its finish reason', () => {
     const result = decodeChat(
       chatChunk({ index: 0, delta: { content: 'e2e4' }, finish_reason: 'stop' }),
@@ -276,6 +323,16 @@ describe('Chat Completions protocol decoder', () => {
     expect(result.raw.events.at(-2)?.payload).toMatchObject({
       choices: [{ delta: { content: 'late' } }],
     });
+  });
+
+  it('[MOV-03] still rejects a usage trailer after DONE', () => {
+    const result = decodeChat(
+      chatChunk({ index: 0, delta: { content: 'e2e4' }, finish_reason: 'stop' }),
+      '[DONE]',
+      JSON.stringify({ choices: [{ index: 0, delta: { content: '', role: 'assistant' }, finish_reason: 'stop' }], usage: { completion_tokens: 20 } }),
+    );
+    expect(result.terminal).toBe('malformed');
+    expect(result.validationIssues).toContainEqual({ eventIndex: 2, reason: 'data-after-done' });
   });
 
   it('[MOV-07, HIS-05] keeps an aborted stream fenced while retaining late raw bytes', () => {

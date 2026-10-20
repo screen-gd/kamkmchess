@@ -3,6 +3,9 @@
   "framework": "vite",
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
+  "functions": {
+    "api/provider-relay.ts": { "maxDuration": 300, "supportsCancellation": true }
+  },
   "rewrites": [
     { "source": "/v1/:path*", "destination": "https://chess-api.agent.soft-magic.com/v1/:path*" },
     { "source": "/play", "destination": "/index.html" },

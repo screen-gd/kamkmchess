@@ -23,12 +23,15 @@ import {
   encodeResponsesRequest,
 } from '../providers/protocols/index.js';
 import type { ProtocolGenerationConfig, ProtocolHistory, ProtocolStreamDecoder, ProtocolStreamResult, ProviderProtocol } from '../providers/protocols/index.js';
+import { createDiagnosticLog, summarizeDiagnosticStream } from './diagnostic-log.js';
+import type { DiagnosticLog } from './diagnostic-log.js';
 
 export const DIAGNOSTIC_MAX_OUTPUT_TOKENS = 256;
 const DIAGNOSTIC_SYSTEM = 'You are checking a chess client conversation contract. Do not make an independent chess decision. Follow the latest request exactly. Return only the requested JSON object.';
 
 function diagnosticHttpFailure(status: number): string {
   const detail = status === 401 ? 'The endpoint rejected the API key. Check the connection key and try again.'
+    : status === 402 ? 'The endpoint rejected the check because of insufficient credit or a spending limit. Check provider billing.'
     : status === 403 ? 'The endpoint denied access. Check this connection\'s permissions.'
       : status === 404 ? 'The endpoint or model was not found. Check the API URL and exact model ID.'
         : status === 429 ? 'The endpoint rate-limited the check. Wait before trying again.'
@@ -185,16 +188,34 @@ export class OpponentService {
     try { modelId = createManualModelReference(profile, input.modelId).requestedModelId; }
     catch { throw new OpponentServiceError('invalid-id', 'Enter an exact model ID without leading or trailing whitespace.'); }
     const diagnosticId = this.idFactory();
+    const log = createDiagnosticLog(profile, modelId, diagnosticId, this.now);
+    log.write('started');
+    try {
+      const result = await this.performCompatibilityDiagnostic(profile, modelId, diagnosticId, log, signal);
+      log.write('completed', { state: result.evidence.state, requestCount: result.evidence.requestCount }, result.evidence.state !== 'passed-current-session');
+      return result;
+    } catch (error) {
+      log.write('preflight-failed', { errorName: error instanceof Error ? error.name : 'UnknownError', code: error instanceof OpponentServiceError ? error.code : null }, true);
+      throw error;
+    }
+  }
+
+  private async performCompatibilityDiagnostic(profile: ConnectionProfile, modelId: string, diagnosticId: string, log: DiagnosticLog, signal?: AbortSignal): Promise<DiagnosticResultV1> {
     const planToken = `KAMKM-PRIOR-PLAN-${this.idFactory()}`;
     const marker = `KAMKM-COMPAT-${this.idFactory()}`;
     let credentials: Awaited<ReturnType<ConnectionStore['resolveCredentials']>>;
     try { credentials = await this.options.connections.resolveCredentials(this.options.namespace, profile); }
-    catch { return this.diagnosticFailure(profile, modelId, diagnosticId, 'unknown', 'Credential state could not be read.', null, marker, planToken); }
+    catch {
+      log.write('blocked', { reason: 'credential-read-failed' }, true);
+      return this.diagnosticFailure(profile, modelId, diagnosticId, 'unknown', 'Credential state could not be read.', null, marker, planToken);
+    }
     if (credentials.status !== 'bound') {
+      log.write('blocked', { reason: 'credentials', credentialStatus: credentials.status }, true);
       return this.diagnosticFailure(profile, modelId, diagnosticId, 'temporary-failure', `Connection credentials are ${credentials.status}.`, null, marker, planToken);
     }
     const route = classifyConnectionRoute(profile);
     if (route.evidence === 'unverified') {
+      log.write('blocked', { reason: 'unverified-route' }, true);
       return this.diagnosticFailure(profile, modelId, diagnosticId, 'incompatible', `Route is unverified: ${route.statement}`, null, marker, planToken, credentials.credentials.credentialRevision);
     }
     const disclosure = await this.options.connections.getDisclosureChoice(this.options.namespace, profile);
@@ -209,18 +230,28 @@ export class OpponentService {
         { id: `${diagnosticId}:check`, role: 'user', text: `Fixed standard-position coordinate exercise: return exactly one JSON object with keys "move", "plan", and "marker". Set move to "e2e4", copy the unique plan marker from the preceding assistant message into plan, and set marker to "${marker}". Do not invent a plan marker. This checks response format and conversation carry only; it is not a chess-strength test.` },
       ],
     };
-    const encoded = encode(protocol, history, config);
-    const prepared = prepareGenerationRequest(profile, credentials.credentials, JSON.stringify(encoded.body), config);
     let stream: ProtocolStreamResult | null = null;
+    let requestCount = 0;
     try {
+      const encoded = encode(protocol, history, config);
+      const prepared = prepareGenerationRequest(profile, credentials.credentials, JSON.stringify(encoded.body), config);
+      log.request(prepared, config.maxOutputTokens);
+      requestCount = 1;
       const response = await this.options.fetch(prepared.url, { ...prepared.init, ...(signal === undefined ? {} : { signal }) });
+      log.response(response);
       const decoder = createDecoder(protocol, response.status);
       if (response.body) await readStream(response.body, decoder, signal);
       else if (!response.ok) decoder.push(new TextEncoder().encode('event: error\ndata: {}\n\n'));
       stream = decoder.finish();
       const reportedModelId = extractReportedModelId(stream);
-      const parsed = stream.terminal === 'complete' && stream.content === 'answer' ? parseDiagnosticAnswer(stream.answerText) : null;
-      const passed = response.ok && parsed?.move === 'e2e4' && parsed.plan === planToken && parsed.marker === marker;
+      // Inspect JSON separately so malformed framing does not masquerade as invalid JSON.
+      // Selection still requires a fully completed answer stream.
+      const parsed = parseDiagnosticAnswer(stream.answerText);
+      const passed = response.ok && stream.terminal === 'complete' && stream.content === 'answer' && parsed?.move === 'e2e4' && parsed.plan === planToken && parsed.marker === marker;
+      log.write('result', {
+        ...summarizeDiagnosticStream(stream, passed), reportedModelId,
+        contract: { validJsonObject: parsed !== null, coordinateMatches: parsed?.move === 'e2e4', priorPlanMatches: parsed?.plan === planToken, markerMatches: parsed?.marker === marker },
+      }, !passed);
       const state: CompatibilityStateV1 = passed ? 'passed-current-session'
         : response.ok && stream.terminal === 'complete' && stream.content !== 'empty' ? 'incompatible'
           : response.status === 429 || response.status === 402 || response.status >= 500 ? 'temporary-failure' : 'unknown';
@@ -232,8 +263,12 @@ export class OpponentService {
       this.evidence.set(evidenceKey(evidence), evidence);
       return { evidence, stream, expected: { coordinate: 'e2e4', marker, priorPlan: planToken }, observed: { answerText: stream.answerText, reportedModelId } };
     } catch (error) {
+      log.write(requestCount ? 'request-failed' : 'preflight-failed', {
+        aborted: signal?.aborted ?? false, errorName: error instanceof Error ? error.name : 'UnknownError',
+        ...(requestCount ? { message: error instanceof Error ? error.message : 'Diagnostic request failed.' } : {}),
+      }, true);
       const state: CompatibilityStateV1 = signal?.aborted ? 'unknown' : 'temporary-failure';
-      return this.diagnosticFailure(profile, modelId, diagnosticId, state, error instanceof Error ? error.message : 'Diagnostic request failed.', stream, marker, planToken, credentials.credentials.credentialRevision, 1);
+      return this.diagnosticFailure(profile, modelId, diagnosticId, state, error instanceof Error ? error.message : 'Diagnostic request failed.', stream, marker, planToken, credentials.credentials.credentialRevision, requestCount);
     }
   }
 

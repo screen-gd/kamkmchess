@@ -141,7 +141,8 @@ export type FinalResultReasonV1 =
   | PendingResultReasonV1
   | 'resignation'
   | 'illegal-move'
-  | 'stalemate';
+  | 'stalemate'
+  | 'draw-agreement';
 
 export type GameResultV1 =
   | { kind: 'unresolved' }
@@ -155,14 +156,14 @@ export type GameResultV1 =
   | {
       kind: 'final';
       winner: ChessSideV1 | 'draw';
-      reason: Exclude<FinalResultReasonV1, 'stalemate'>;
+      reason: Exclude<FinalResultReasonV1, 'stalemate' | 'draw-agreement'>;
       eventId: string;
       decidedAtMs: number;
     }
   | {
       kind: 'final';
       winner: 'draw';
-      reason: 'stalemate';
+      reason: 'stalemate' | 'draw-agreement';
       eventId: string;
       decidedAtMs: number;
     };

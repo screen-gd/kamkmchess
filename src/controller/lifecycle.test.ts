@@ -559,3 +559,162 @@ describe('guest lifecycle restart and rematch', () => {
     }
   });
 });
+
+describe('guest lifecycle declared results', () => {
+  it('persists an agreed draw, pauses the clocks, and refuses to undo the final result', async () => {
+    const harness = await createHarness('lifecycle-declare-draw');
+    try {
+      const started = await initializePlayable(harness, {
+        humanSide: 'white',
+        namespace: { kind: 'guest' },
+        ownershipEpoch: 0,
+        timeControl: STANDARD_TIME_CONTROL,
+      });
+      expect(started.checkpoint.selections.players).toEqual({ white: { kind: 'human' }, black: { kind: 'human' } });
+
+      const declared = await harness.controller.declareResult(started.fence, { kind: 'draw' });
+      expect(declared.kind).toBe('accepted');
+      const result = declared.snapshot.checkpoint.result;
+      expect(result).toMatchObject({ kind: 'final', winner: 'draw', reason: 'draw-agreement' });
+      expect(declared.snapshot.checkpoint.clocks.activeSide).toBeNull();
+      expect(declared.snapshot.clockReading).toBeNull();
+      expect(declared.snapshot.position.fen).toBe(STARTING_FEN);
+      expect(declared.snapshot.checkpoint.rules.moves).toHaveLength(0);
+
+      const saved = await harness.store.readGame(harness.gameId);
+      expect(saved?.checkpoint.result).toMatchObject({ kind: 'final', winner: 'draw', reason: 'draw-agreement' });
+      expect(saved?.checkpoint.clocks.activeSide).toBeNull();
+      expect(saved?.events.map((event) => event.kind)).toContain('game-declared-final');
+
+      const undone = await harness.controller.undo(declared.snapshot.fence);
+      expect(undone.checkpoint.revision).toBe(declared.snapshot.checkpoint.revision);
+      expect(undone.checkpoint.result).toEqual(result);
+      expect(undone.position.fen).toBe(STARTING_FEN);
+    } finally {
+      harness.store.close();
+    }
+  });
+
+  it('records a human resignation and fences late model moves and archive writes', async () => {
+    const harness = await createHarness('lifecycle-declare-resignation');
+    try {
+      const initial = await initializePlayable(harness, {
+        humanSide: 'white',
+        modelSelection: model,
+        namespace: { kind: 'guest' },
+        ownershipEpoch: 0,
+        timeControl: STANDARD_TIME_CONTROL,
+      });
+      const humanMove = await harness.controller.dispatch({
+        schemaVersion: 1,
+        kind: 'human-move',
+        fence: initial.fence,
+        move: { from: 'e2', to: 'e4' },
+      });
+      if (humanMove.kind !== 'accepted') throw new Error(`The human move was not accepted: ${humanMove.kind}.`);
+      const settled = await settlePending(harness, humanMove.snapshot);
+      const started = await harness.controller.dispatch({
+        schemaVersion: 1,
+        kind: 'begin-model-turn',
+        fence: settled.fence,
+      });
+      if (started.kind !== 'model-turn-started') throw new Error('The model turn did not start.');
+
+      const declared = await harness.controller.declareResult(started.request.fence, {
+        kind: 'resignation',
+        side: 'white',
+      });
+      expect(declared.kind).toBe('accepted');
+      const result = declared.snapshot.checkpoint.result;
+      expect(result).toMatchObject({ kind: 'final', winner: 'black', reason: 'resignation' });
+      expect(declared.snapshot.checkpoint.clocks.activeSide).toBeNull();
+      expect(declared.snapshot.modelHandoff).toMatchObject({ producing: null, queued: null });
+      expect(declared.snapshot.checkpoint.rules.moves).toHaveLength(1);
+
+      const lateMove = await harness.controller.dispatch({
+        schemaVersion: 1,
+        kind: 'model-turn-effect',
+        fence: started.request.fence,
+        effect: {
+          kind: 'model-resignation',
+          statement: 'I resign.',
+          loss: { winner: 'human', reason: 'resignation' },
+          budgets: {
+            schemaVersion: 1,
+            illegalMoveAttempts: 0,
+            formatCorrections: 0,
+            manualRetries: 0,
+            attemptRecords: [],
+          },
+        },
+      });
+      expect(lateMove.kind).toBe('rejected');
+      expect(lateMove.snapshot.checkpoint.result).toEqual(result);
+      expect(lateMove.snapshot.checkpoint.rules.moves).toHaveLength(1);
+
+      const lateArchive = await harness.controller.appendModelTurnArchive(started.request.fence, {
+        kind: 'terminal',
+        requestId: 'late-request',
+        outcome: 'complete',
+        details: {},
+        messages: [],
+      });
+      expect(lateArchive).toBeNull();
+
+      const saved = await harness.store.readGame(harness.gameId);
+      expect(saved?.checkpoint.result).toMatchObject({ kind: 'final', winner: 'black', reason: 'resignation' });
+      expect(saved?.checkpoint.rules.moves).toHaveLength(1);
+      expect(saved?.events.map((event) => event.kind)).toContain('game-declared-final');
+
+      const undone = await harness.controller.undo(declared.snapshot.fence);
+      expect(undone.checkpoint.result).toEqual(result);
+      expect(undone.checkpoint.rules.moves).toHaveLength(1);
+    } finally {
+      harness.store.close();
+    }
+  });
+
+  it('rejects stale fences, automated draws, and non-human resignation sides', async () => {
+    const hotseat = await createHarness('lifecycle-declare-stale');
+    try {
+      const started = await initializePlayable(hotseat, {
+        humanSide: 'white',
+        namespace: { kind: 'guest' },
+        ownershipEpoch: 0,
+        timeControl: STANDARD_TIME_CONTROL,
+      });
+      const stale = await hotseat.controller.declareResult(
+        { ...started.fence, revision: started.fence.revision + 1 },
+        { kind: 'draw' },
+      );
+      expect(stale.kind).toBe('rejected');
+      expect(stale.kind === 'rejected' && stale.reason).toBe('stale-fence');
+      expect(stale.snapshot.checkpoint.result).toEqual({ kind: 'unresolved' });
+    } finally {
+      hotseat.store.close();
+    }
+
+    const spectator = await createHarness('lifecycle-declare-automated');
+    try {
+      const started = await initializePlayable(spectator, {
+        humanSide: 'white',
+        players: { white: model, black: model },
+        namespace: { kind: 'guest' },
+        ownershipEpoch: 0,
+        timeControl: STANDARD_TIME_CONTROL,
+      });
+      const draw = await spectator.controller.declareResult(started.fence, { kind: 'draw' });
+      expect(draw.kind).toBe('rejected');
+      expect(draw.kind === 'rejected' && draw.reason).toBe('not-actionable');
+      const resignation = await spectator.controller.declareResult(started.fence, {
+        kind: 'resignation',
+        side: 'white',
+      });
+      expect(resignation.kind).toBe('rejected');
+      expect(resignation.kind === 'rejected' && resignation.reason).toBe('wrong-side');
+      expect(spectator.controller.snapshot().checkpoint.result).toEqual({ kind: 'unresolved' });
+    } finally {
+      spectator.store.close();
+    }
+  });
+});

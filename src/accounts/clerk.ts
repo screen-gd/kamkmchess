@@ -127,6 +127,12 @@ export async function createAccountSession(options: {
       generation += 1;
       currentIdentity = null;
       unsubscribeClient();
+      // Subscribers learn that the account session is gone. A participant
+      // session that still holds an account credential must fence it, instead
+      // of waiting for a notification that will never come.
+      for (const listener of [...listeners]) {
+        try { listener(null); } catch { /* one subscriber must not block the rest */ }
+      }
       listeners.clear();
     },
     get identity() { return currentIdentity; },

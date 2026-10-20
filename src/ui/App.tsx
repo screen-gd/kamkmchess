@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import { AlertDialog } from '@base-ui/react/alert-dialog';
 import { ChessBoard } from './ChessBoard.js';
 import { EvaluationBar } from './EvaluationBar.js';
 import { MoveList } from './MoveList.js';
 import { useBoardHistory } from './use-board-history.js';
 import type { ControllerSnapshotV1 } from '../controller/index.js';
-import type { ModelSelection } from '../controller/index.js';
+import type { GameResultDeclarationV1, ModelSelection } from '../controller/index.js';
 import { legalMoves } from '../rules/index.js';
 import type { CoordinateMove, Promotion } from '../rules/index.js';
 import { isLocalBoardInputDisabled, parseCoordinateMove, startClassifiedLocalGame, submitBoardMove } from './board-input.js';
@@ -35,6 +36,8 @@ import { LeftGameRail } from '../navigation/LeftGameRail.js';
 import { readSidebarPreferences } from '../navigation/sidebar-preferences.js';
 import { NewGameSetup } from './NewGameSetup.js';
 import type { NewGameDraft, StartedSidebarGame } from './NewGameSetup.js';
+import { resultDeclarationAvailability, resultDeclarationCopy } from './result-declaration.js';
+import type { ResultDeclarationChoice } from './result-declaration.js';
 
 type PromotionMove = Omit<CoordinateMove, 'promotion'>;
 interface AppProps {
@@ -100,6 +103,7 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
   const [setupFocus, setSetupFocus] = useState<'opponent' | 'time' | 'position' | null>(null);
   const [setupDraft, setSetupDraft] = useState<NewGameDraft | undefined>();
   const [tool, setTool] = useState<'settings' | 'position' | 'archive' | 'move' | null>(null);
+  const [resultPrompt, setResultPrompt] = useState<ResultDeclarationChoice | null>(null);
   const [working, setWorking] = useState(false);
   const checkedIdentities = useRef(new Map<string, OpponentIdentityV1>());
   const [modelSelection, setModelSelection] = useState<ModelSelection | null>(null);
@@ -112,7 +116,7 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
   const [generationJournal, setGenerationJournal] = useState<GenerationJournalV1 | null>(null);
   const [journalRefresh, setJournalRefresh] = useState(0);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
-  const history = useBoardHistory(snapshot, !setupOpen && !promotion && !recoveryOpen && !tool);
+  const history = useBoardHistory(snapshot, !setupOpen && !promotion && !recoveryOpen && !tool && resultPrompt === null);
   const generationController = useRef<AbortController | null>(null);
   const practiceController = useRef<AbortController | null>(null);
   const generationFenceKey = useRef('');
@@ -120,6 +124,10 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
   const announcedResult = useRef(finalEventId(initialSnapshot));
   const movesPanel = useRef<HTMLElement>(null);
   const boardPanel = useRef<HTMLElement>(null);
+  const keepPlaying = useRef<HTMLButtonElement>(null);
+  const resultTrigger = useRef<HTMLButtonElement | null>(null);
+  const resultConfirmed = useRef(false);
+  const resultStatus = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     const url = new URL(window.location.href);
     if (url.searchParams.get('setup') !== 'new') return;
@@ -128,7 +136,12 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
   }, []);
   const refresh = useCallback((next: ControllerSnapshotV1) => {
     setSnapshot(next);
-    if (next.checkpoint.result.kind === 'final') setFeedback(statusLabel(next));
+    if (next.checkpoint.result.kind === 'final') {
+      // A final result can arrive while the confirmation is open, for example on an AI checkmate.
+      resultConfirmed.current = true;
+      setResultPrompt(null);
+      setFeedback(statusLabel(next));
+    }
   }, []);
   useEffect(() => { sessionRef.current = session; }, [session]);
   useEffect(() => () => {
@@ -330,9 +343,11 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
         } finally {
           service?.producingReplySettled();
           if (generationController.current === abort) generationController.current = null;
-          if (sessionRef.current.gameId === session.gameId && abort?.signal.aborted) setGenerationState('stopped');
           if (sessionRef.current.gameId === session.gameId) {
             const latest = session.controller.snapshot();
+            if (abort?.signal.aborted) {
+              setGenerationState(latest.checkpoint.result.kind === 'final' ? 'idle' : 'stopped');
+            }
             const latestQueued = latest.modelHandoff.queued?.selection;
             const latestQueuedIdentity = latestQueued
               ? [latestQueued.connectionId, latestQueued.configurationRevision,
@@ -591,9 +606,39 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
   const sideKey = snapshot.position.sideToMove === 'w' ? 'white' : 'black';
   const activePlayer = snapshot.checkpoint.selections.players[sideKey];
   const isModelTurn = activePlayer.kind === 'model';
-  const disabled = setupOpen || history.reviewing || promotion !== null || isLocalBoardInputDisabled(snapshot, working || isModelTurn || generationState === 'producing');
+  const disabled = setupOpen || history.reviewing || promotion !== null || resultPrompt !== null || isLocalBoardInputDisabled(snapshot, working || isModelTurn || generationState === 'producing');
   const players = snapshot.checkpoint.selections.players;
   const spectator = players.white.kind === 'model' && players.black.kind === 'model';
+  const resultActions = resultDeclarationAvailability(players, sideKey);
+  const resultPromptCopy = resultPrompt !== null && resultActions.resigningSide !== null
+    ? resultDeclarationCopy(resultPrompt, resultActions.resigningSide) : null;
+  const resultDisabled = working || snapshot.readiness !== 'ready' || snapshot.clockReading?.status !== 'running' ||
+    snapshot.checkpoint.result.kind !== 'unresolved' || history.reviewing || promotion !== null || resultActions.resigningSide === null;
+  const declareResult = async (choice: ResultDeclarationChoice, resigningSide: 'white' | 'black') => {
+    // Stop any provider or engine work before the final result fences this game.
+    generationController.current?.abort();
+    practiceController.current?.abort();
+    setAutoGeneration(false);
+    setWorking(true);
+    try {
+      const declaration: GameResultDeclarationV1 = choice === 'draw'
+        ? { kind: 'draw' }
+        : { kind: 'resignation', side: resigningSide };
+      const result = await session.controller.declareResult(session.controller.snapshot().fence, declaration);
+      refresh(result.snapshot);
+      setJournalRefresh((revision) => revision + 1);
+      if (result.kind === 'accepted') {
+        setGenerationState('idle');
+        setGenerationDetail('');
+        setFeedback(choice === 'draw' ? 'Draw agreed.'
+          : `${resigningSide === 'white' ? 'White' : 'Black'} resigned.`);
+      } else if (result.kind === 'expired') setFeedback('Time expired.');
+      else if (result.kind === 'clock-reconciliation-required') setFeedback('Checking clock…');
+      else setFeedback('The game changed before the result was saved.');
+    } catch (error) {
+      setFeedback(conciseError(error));
+    } finally { setWorking(false); }
+  };
   const recoverySelection = spectator ? activePlayer : players.white.kind === 'model' ? players.white : players.black;
   const humanColor = humanSide(snapshot);
   const premoveColor = !history.reviewing && !final && !setupOpen && !promotion &&
@@ -631,6 +676,7 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
     setOrientation(started.checkpoint.selections.players.white.kind === 'model' && started.checkpoint.selections.players.black.kind === 'human' ? 'black' : 'white');
     setCoordinate('');
     setPromotion(null);
+    setResultPrompt(null);
     setAutoGeneration(true);
     setGenerationState('idle');
     setGenerationDetail('');
@@ -689,18 +735,33 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
         <nav hidden={setupOpen} className="board-tools" aria-label="Board tools"><IconButton icon="flip" label="Flip board" onClick={() => setOrientation(side => side === 'white' ? 'black' : 'white')} />
           <IconButton icon="undo" label="Undo" onClick={() => void undo()} disabled={working || snapshot.readiness !== 'ready' || !snapshot.checkpoint.rules.moves.length || snapshot.checkpoint.result.kind !== 'unresolved'} />
           <IconButton icon="keyboard" label="Type a move" disabled={disabled} onClick={() => openTool('move')} />
+          {resultActions.resigningSide !== null && <>
+            <IconButton icon="draw" label="Agree a draw" disabled={resultDisabled} onClick={event => {
+              resultTrigger.current = event.currentTarget;
+              resultConfirmed.current = false;
+              setResultPrompt('draw');
+            }} />
+            <IconButton icon="resign" label="Resign game" disabled={resultDisabled} onClick={event => {
+              resultTrigger.current = event.currentTarget;
+              resultConfirmed.current = false;
+              setResultPrompt('resignation');
+            }} />
+          </>}
           <div className="mobile-history-tools">
             <IconButton icon="back" label="Previous move" disabled={history.ply === 0} onClick={() => history.select(history.ply - 1)} />
             <IconButton icon="next" label="Next move" disabled={!history.reviewing} onClick={() => history.select(history.ply + 1)} />
             <IconButton icon="moves" label="Show moves" aria-controls="moves-panel" onClick={() => { movesPanel.current?.focus({ preventScroll: true }); movesPanel.current?.scrollIntoView({ block: 'start' }); }} />
           </div>
         </nav>
-        <div className="match-status" data-tone={finalResult?.tone} role="status" aria-description={generationDetail || feedback}>
-          {finalResult ? <div className="status-result"><h2 className="status-heading">{finalResult.headline}</h2><p className="status-detail">{finalResult.detail}</p></div> : <h2 className="status-heading" aria-label={generationState === 'producing' ? isEngineSelection(activePlayer) ? 'Engine is choosing a move' : 'AI is choosing a move' : undefined}>{history.reviewing ? `${history.ply}/${history.count}` : generationState === 'stopped' ? 'Paused' : generationState === 'failed' ? conciseTurnError(new Error(generationDetail)) : generationState === 'producing' ? generationDetail === 'Checking connection…' ? 'Checking…' : 'Thinking…' : statusLabel(snapshot)}</h2>}
+        <div className="match-status" data-tone={finalResult?.tone} role="status" aria-description={finalResult ? undefined : generationDetail || feedback}>
+          <div className="status-result">
+            <h2 ref={resultStatus} tabIndex={-1} className="status-heading" aria-label={!finalResult && generationState === 'producing' ? isEngineSelection(activePlayer) ? 'Engine is choosing a move' : 'AI is choosing a move' : undefined}>{finalResult ? finalResult.headline : history.reviewing ? `${history.ply}/${history.count}` : generationState === 'stopped' ? 'Paused' : generationState === 'failed' ? conciseTurnError(new Error(generationDetail)) : generationState === 'producing' ? generationDetail === 'Checking connection…' ? 'Checking…' : 'Thinking…' : statusLabel(snapshot)}</h2>
+            {finalResult?.detail ? <p className="status-detail">{finalResult.detail}</p> : null}
+          </div>
           <div className="button-row">
-            {generationState === 'producing' && <IconButton icon="stop" label="Stop generation" onClick={() => void stopModelTurn()} />}
+            {!final && generationState === 'producing' && <IconButton icon="stop" label="Stop generation" onClick={() => void stopModelTurn()} />}
             {isModelTurn && !autoGeneration && !final && generationState === 'idle' && <IconButton icon="play" label={isEngineSelection(activePlayer) ? "Resume engine turn" : "Resume model turn"} onClick={retryModelTurn} />}
-            {(generationState === 'failed' || generationState === 'stopped') && isModelTurn && <>
+            {!final && (generationState === 'failed' || generationState === 'stopped') && isModelTurn && <>
               <IconButton icon="play" label={snapshot.modelHandoff.queued?.state === "failed" ? "Retry queued model" : isEngineSelection(activePlayer) ? "Retry engine turn" : "Retry model request"} onClick={() => { if (snapshot.modelHandoff.queued?.state === 'failed') void recoverQueuedModel('retry'); else retryModelTurn(); }} />
               {snapshot.modelHandoff.queued?.state === 'failed' && <IconButton icon="undo" label="Resume previous model" onClick={() => void recoverQueuedModel('resume')} />}
             </>}
@@ -725,5 +786,28 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
       </aside>
     </div>
     <p className="sr-only" role="status" aria-live="polite">{feedback}</p>
-  </main></>;
+  </main>
+  <AlertDialog.Root open={resultPrompt !== null} onOpenChange={open => { if (!open) setResultPrompt(null); }}>
+    {resultPromptCopy !== null && resultActions.resigningSide !== null &&
+      <AlertDialog.Portal>
+        <AlertDialog.Backdrop className="result-dialog-backdrop" />
+        <AlertDialog.Popup className="result-dialog"
+          initialFocus={keepPlaying}
+          finalFocus={() => !resultConfirmed.current && resultTrigger.current?.isConnected
+            ? resultTrigger.current : resultStatus.current}>
+          <AlertDialog.Title>{resultPromptCopy.title}</AlertDialog.Title>
+          <AlertDialog.Description>{resultPromptCopy.description}</AlertDialog.Description>
+          <div className="button-row result-dialog-actions">
+            <AlertDialog.Close ref={keepPlaying} render={<button className="button secondary" type="button" />}>{resultPromptCopy.cancelLabel}</AlertDialog.Close>
+            <AlertDialog.Close render={<button className="button primary" type="button" />} onClick={() => {
+              const choice = resultPrompt;
+              const resigningSide = resultActions.resigningSide;
+              resultConfirmed.current = true;
+              if (choice !== null && resigningSide !== null) void declareResult(choice, resigningSide);
+            }}>{resultPromptCopy.confirmLabel}</AlertDialog.Close>
+          </div>
+        </AlertDialog.Popup>
+      </AlertDialog.Portal>}
+  </AlertDialog.Root>
+  </>;
 }

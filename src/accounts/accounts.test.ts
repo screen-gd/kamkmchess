@@ -134,6 +134,23 @@ describe('optional accounts and explicit guest import', () => {
     session.dispose();
   });
 
+  it('notifies subscribers with exactly one final null when the account session is disposed', async () => {
+    const session = await createAccountSession({
+      config: { publishableKey: 'pk_live_example' },
+      sdk: { load: async () => ({ user: { id: 'user_2abcdefghijklmnop' }, session: { getToken: async () => 'jwt' }, signInWithGoogle: vi.fn(), signOut: vi.fn(), subscribe: () => () => {} }) },
+      credentials: { clearCredentialsForNamespace: vi.fn() }, fence: fence(),
+    });
+    const observed: Array<string | null> = [];
+    session.subscribe((identity) => observed.push(identity?.accountId ?? null));
+
+    session.dispose();
+    session.dispose();
+    // A subscriber that is still holding an account credential must learn
+    // that the account session is gone, exactly once.
+    expect(observed).toEqual(['user_2abcdefghijklmnop', null]);
+    expect(session.identity).toBeNull();
+  });
+
   it('previews complete guest references and imports only explicitly selected IDs', async () => {
     const imported: string[] = [];
     const port = {

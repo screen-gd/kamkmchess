@@ -3,7 +3,14 @@
 Vercel serves the frontend at `https://chess.khalil.mageed.net`. The Go API is
 `https://chess-api.agent.soft-magic.com`. The frontend calls that API directly;
 Vercel's `/v1/*` rewrite preserves compatibility with same-origin API clients.
-There is no Vercel API function or database credential.
+Vercel also runs the stateless `api/provider-relay.ts` Node function for remote
+custom AI endpoints that do not support browser CORS, such as Ollama Cloud.
+It forwards each request's API key and streams the provider response without
+storing or logging either. Public HTTPS destinations on port 443 are checked
+and pinned to public DNS addresses; local networks and redirects are rejected.
+The same handler runs in Vite development and preview. A static-only `dist/`
+deployment cannot serve the relay. No database credential or shared provider
+key is needed for this function, and the Go API deployment is unchanged.
 
 The server deployment directory is `/home/agentsoftmagic/kamkmchess`.
 Apache owns HTTPS and proxies the API's cPanel document root through
@@ -12,6 +19,25 @@ read-only filesystem. PostgreSQL 16 has no published host port. It is reachable
 only through the dedicated Docker network, using SCRAM passwords and verified
 TLS for the runtime role. The network alias matches the AutoSSL certificate.
 Migrations and backups use a separate administrative role inside the container.
+
+## Online update delivery
+
+Online fetch-SSE uses the configured direct API origin, bypassing Vercel's
+compatibility rewrite. See the [online update contract](../docs/architecture/online-updates.md).
+The participant `/v1/online/matches/{matchID}/updates` route accepts bearer or
+guest credentials in headers and `Last-Event-ID` for reconnects. Keep those
+headers allowed only on the online API; private account sync retains its
+existing CORS policy.
+
+Before enabling online play, inspect the actual Apache route with an
+authorized participant session. Confirm the initial snapshot and heartbeat
+comments arrive before the response ends, each stream ends within 20 seconds
+or credential expiry, and a renewed stream obtains fresh authorization.
+Disable compression or buffering for `text/event-stream` if it delays frames.
+Verify the same snapshot through the JSON polling path, denied origins and
+revoked membership, then measure concurrent streams against the existing host
+and database pool. Go's flush calls and response headers do not prove Apache
+delivery or hosting capacity. Record these checks in KHA-83 before rollout.
 
 ## Build and start
 

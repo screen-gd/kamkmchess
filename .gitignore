@@ -4,6 +4,7 @@ research/
 __pycache__/
 node_modules/
 /dist/
+/build/
 /public/engines/
 /coverage/
 /test-results/

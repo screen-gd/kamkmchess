@@ -155,7 +155,8 @@ export function restoreDisclosureRecord(
 ): DisclosureDecisionRecord {
   try {
     if (!isRecord(value)
-      || !hasExactFields(value, DISCLOSURE_FIELDS, [])
+      || !hasExactFields(value, DISCLOSURE_FIELDS, ['transport'])
+      || (value.transport !== undefined && value.transport !== 'site-relay')
       || value.profileId !== profile.id
       || value.configRevision !== profile.configRevision
       || value.destinationUrl !== getConnectionEndpoints(profile).generationUrl
@@ -169,6 +170,7 @@ export function restoreDisclosureRecord(
       destinationUrl: getConnectionEndpoints(profile).generationUrl,
       decision: value.decision,
       recordedAtMs: value.recordedAtMs as number,
+      ...(value.transport === 'site-relay' ? { transport: 'site-relay' as const } : {}),
     };
   } catch {
     throw localReadError();

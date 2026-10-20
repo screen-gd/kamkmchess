@@ -18,7 +18,9 @@
     "test:watch": "vitest",
     "test:browser": "playwright test",
     "benchmark:position-check": "node scripts/benchmark-position-check.mjs",
-    "build": "pnpm run typecheck && node scripts/prepare-engines.mjs && vite build && node scripts/write-notices.mjs",
+    "build:rules-worker": "node scripts/build-rules-worker.mjs",
+    "start:rules-worker": "node build/rules-worker/worker.mjs",
+    "build": "pnpm run typecheck && node scripts/prepare-engines.mjs && vite build && node scripts/build-rules-worker.mjs && node scripts/write-notices.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "check": "pnpm run lint && pnpm run test && pnpm run build"
   },

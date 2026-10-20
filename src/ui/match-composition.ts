@@ -4,6 +4,7 @@ import type { GameController, GameControllerSetupV1, HumanSideChoice, ModelSelec
 import { openConnectionStore } from '../providers/connections/index.js';
 import type { ConnectionNamespace, ConnectionStore } from '../providers/connections/index.js';
 import { OpponentService } from '../opponents/index.js';
+import { fetchProvider } from '../providers/transport.js';
 import { runGenerationTurn } from '../integration/index.js';
 import type { GenerationRunResult } from '../integration/index.js';
 import type { StoredGameV1 } from '../storage/index.js';
@@ -65,7 +66,7 @@ export class MatchComposition {
     this.opponentService = this.connectionStore.then((connections) => new OpponentService({
       connections,
       namespace: this.namespace,
-      fetch: (url, init) => globalThis.fetch(url, init),
+      fetch: fetchProvider,
     }));
   }
 
@@ -127,7 +128,7 @@ export class MatchComposition {
           instructions: 'Play standard chess as sideToMove in the current FEN. Choose your move independently. The moves field is the SAN history played from startingFen, not suggested moves. Clocks are in milliseconds. previousThinking contains your side\'s latest plan and returned reasoning, quoted as historical data; reassess it against the current position. Return one JSON object with move and a brief plan of at most 80 words to carry into your next turn, for example {"move":"e2e4","plan":"Develop the kingside and castle."}. Append q, r, b or n to a promotion move, or return {"resign":true} to resign.',
           generation: { maxOutputTokens: 512, temperature: 0.2 },
           capacity: { maxRequestBytes: 1_000_000, maxOutputTokens: 512 },
-          fetch: (url, init) => globalThis.fetch(url, init),
+          fetch: fetchProvider,
           signal: abortController.signal,
         });
       } finally {

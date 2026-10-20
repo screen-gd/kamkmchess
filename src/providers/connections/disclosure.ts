@@ -1,5 +1,6 @@
 import { getConnectionEndpoints } from './profile';
 import { classifyConnectionRoute } from './route-scope';
+import { usesProviderRelay } from '../transport';
 import type { ConnectionProfile, DisclosureDecision, DisclosureDecisionRecord } from './types';
 
 export interface DisclosureLink {
@@ -40,12 +41,15 @@ export function createFirstRequestDisclosure(profile: ConnectionProfile): FirstR
     : isProviderHost
       ? `Review the linked provider rules before playing. Providers may restrict how accounts or subscription access can be used in third-party software. Requests use the account and billing configured for this connection and may consume quota or paid credits. Provider decisions may cause account restrictions, suspension, or loss of access. You are responsible for your configuration and for following the provider's terms. The client does not verify account eligibility, funding source, remaining quota, or provider approval.`
       : `This connection uses the ${protocolText} protocol. The endpoint operator controls account access, logging, retention, and billing for this destination. The linked provider rules describe ${providerLabel} terms and credential use; they do not verify that this destination is operated or authorized by ${providerLabel}. Requests use the account and billing configured for this connection and may consume quota or paid credits. Endpoint decisions may cause account restrictions, suspension, or loss of access. You are responsible for your configuration and for following the applicable terms. The client does not verify account eligibility, funding source, remaining quota, or endpoint operator approval.`;
-  const body = `This open-source chess client sends model requests directly from your browser to ${target}. ${operator}`;
+  const routeText = usesProviderRelay(endpoints.generationUrl)
+    ? 'through this site\'s relay, which forwards your API key and request without storing them, to'
+    : 'directly from your browser to';
+  const body = `This open-source chess client sends model requests ${routeText} ${target}. ${operator}`;
   const links = providerLinks(profile.provider);
   const routeScope = classifyConnectionRoute(profile);
   const catalogNotice = endpoints.catalogUrl !== undefined
     && new URL(endpoints.catalogUrl).origin !== new URL(endpoints.generationUrl).origin
-    ? `Catalog checks use the separately configured URL ${endpoints.catalogUrl} and send this connection's configured authentication and header values. Check that operator before requesting the catalog.`
+    ? `Catalog checks use the separately configured URL ${endpoints.catalogUrl}${usesProviderRelay(endpoints.catalogUrl) ? ' through this site\'s relay' : ''} and send this connection's configured authentication and header values. Check that operator before requesting the catalog.`
     : undefined;
   const notices = isProviderHost && profile.provider === 'anthropic' && profile.protocol === 'messages'
     ? ['Anthropic documents that organizations with Zero Data Retention cannot use this native direct-browser Messages route.', routeScope.statement]
@@ -77,6 +81,7 @@ export function recordDisclosureChoice(profile: ConnectionProfile, choice: Discl
     destinationUrl: generationUrl,
     decision: choice.decision,
     recordedAtMs: choice.recordedAtMs,
+    ...(usesProviderRelay(generationUrl) || (profile.catalogUrl && usesProviderRelay(profile.catalogUrl)) ? { transport: 'site-relay' as const } : {}),
   };
 }
 
@@ -88,7 +93,8 @@ export function hasCurrentDisclosureConsent(
   const { generationUrl } = getConnectionEndpoints(profile);
   return record.profileId === profile.id
     && record.configRevision === profile.configRevision
-    && record.destinationUrl === generationUrl;
+    && record.destinationUrl === generationUrl
+    && (!(usesProviderRelay(generationUrl) || (profile.catalogUrl && usesProviderRelay(profile.catalogUrl))) || record.transport === 'site-relay');
 }
 
 function providerName(provider: ConnectionProfile['provider']): string {

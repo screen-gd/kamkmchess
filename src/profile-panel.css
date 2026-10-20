@@ -1,0 +1,42 @@
+.profile-panel { max-width: 70ch; }
+.profile-panel h2 { font-size: 18px; margin-block: 8px; }
+.profile-panel h3 { font-size: 16px; margin-block: 12px 4px; }
+.profile-identity { display: flex; gap: 14px; align-items: center; padding-block: 14px; border-block: 1px solid var(--rule); }
+.profile-identity-text { min-width: 0; }
+.profile-name { font-weight: 600; overflow-wrap: anywhere; }
+.profile-avatar { width: 48px; height: 48px; flex: 0 0 48px; border-radius: 50%; border: 1px solid var(--rule); background: var(--soft); }
+.profile-field { display: grid; gap: 6px; margin-block: 16px; }
+.profile-field > span { color: var(--dim); font-size: 12px; }
+.profile-field input { min-height: 44px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.profile-avatars { margin: 0 0 14px; padding: 0; border: 0; }
+.profile-avatars legend { padding: 0; color: var(--dim); font-size: 12px; }
+.profile-avatar-choices { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.profile-avatar-choice { position: relative; display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; padding: 4px; border-radius: 50%; cursor: pointer; }
+/* The radio stays focusable and keeps its accessible name. The swatch is the
+   visible control, and the focus ring is drawn on it. */
+.profile-avatar-input { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; opacity: 0; }
+.profile-swatch { display: block; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--rule); }
+.profile-avatar-choice:has(input:checked) .profile-swatch { outline: 2px solid var(--ink); outline-offset: 2px; }
+.profile-avatar-choice:has(input:focus-visible) .profile-swatch { outline: 3px solid var(--focus); outline-offset: 2px; }
+.profile-guest-seats { margin-top: 20px; padding-top: 4px; border-top: 1px solid var(--rule); }
+.profile-status { min-height: 22px; margin-block: 12px 0; color: var(--dim); font-size: 13px; overflow-wrap: anywhere; }
+
+/* The chosen avatars are quiet two-stop gradients. The generated avatar
+   derives its hue from the public profile identifier, so it is stable for a
+   person and stores nothing. */
+.profile-swatch[data-avatar="ember"], .profile-avatar[data-avatar="ember"] { background: linear-gradient(140deg, #e2725b, #a3341f); }
+.profile-swatch[data-avatar="harbor"], .profile-avatar[data-avatar="harbor"] { background: linear-gradient(140deg, #2f7f8f, #14495c); }
+.profile-swatch[data-avatar="meadow"], .profile-avatar[data-avatar="meadow"] { background: linear-gradient(140deg, #5f8f52, #2f5c30); }
+.profile-swatch[data-avatar="orchid"], .profile-avatar[data-avatar="orchid"] { background: linear-gradient(140deg, #9a5fa0, #5c2f66); }
+.profile-swatch[data-avatar="slate"], .profile-avatar[data-avatar="slate"] { background: linear-gradient(140deg, #6b7280, #3f4550); }
+.profile-swatch[data-avatar="sunrise"], .profile-avatar[data-avatar="sunrise"] { background: linear-gradient(140deg, #d99b3a, #a35a1c); }
+.profile-swatch[data-avatar="tide"], .profile-avatar[data-avatar="tide"] { background: linear-gradient(140deg, #2f7f9e, #17455f); }
+.profile-swatch[data-avatar="violet"], .profile-avatar[data-avatar="violet"] { background: linear-gradient(140deg, #6f5bb5, #3b2f6b); }
+.profile-swatch[data-avatar="generated"], .profile-avatar[data-avatar="generated"] {
+  background: linear-gradient(140deg, hsl(var(--profile-hue, 210) 42% 60%), hsl(calc(var(--profile-hue, 210) + 40) 40% 34%));
+}
+
+@media (max-width: 620px) {
+  .profile-avatar-choices { gap: 4px; }
+  .profile-field input { font-size: 16px; }
+}

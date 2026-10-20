@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "cursor": 3,
+  "snapshot": {
+    "schemaVersion": 2,
+    "matchId": "match-wire",
+    "variant": "orthodox",
+    "startingFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "positionFen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+    "timeControl": { "startingTimeMs": 60000, "incrementMs": 1000 },
+    "version": 3,
+    "controlEpoch": 1,
+    "rulesPolicyVersion": "online-rules/1",
+    "status": "active",
+    "result": null,
+    "seats": [
+      { "seat": "white", "publicLabel": "Alice", "control": { "kind": "human" }, "controlEpoch": 1, "illegalAttemptsSpent": 0, "formatCorrectionsSpent": 0 },
+      { "seat": "black", "publicLabel": "Guest", "control": { "kind": "agent", "modelLabel": "Public model" }, "controlEpoch": 1, "illegalAttemptsSpent": 1, "formatCorrectionsSpent": 2 }
+    ],
+    "clock": {
+      "whiteMs": 61000,
+      "blackMs": 60000,
+      "activeSeat": null,
+      "activeSince": null,
+      "deadlineAt": null,
+      "whiteMoved": true,
+      "blackMoved": false,
+      "turnNumber": 2,
+      "replySeat": "black",
+      "replyDeadlineAt": "2026-10-20T10:00:15Z"
+    },
+    "moves": [
+      { "version": 2, "seat": "white", "uci": "e2e4", "san": "e4", "resultingFen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1" }
+    ],
+    "pendingOffers": [
+      { "offerId": "offer-wire", "kind": "draw", "seat": "white", "targetVersion": null, "baseVersion": 3, "createdAt": "2026-10-20T10:00:01Z" }
+    ],
+    "createdAt": "2026-10-20T10:00:00Z",
+    "updatedAt": "2026-10-20T10:00:01Z",
+    "completedAt": null,
+    "yourSeat": "white"
+  }
+}

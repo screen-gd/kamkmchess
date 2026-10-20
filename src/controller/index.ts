@@ -64,6 +64,7 @@ const GAME_CONTROLLER_INTENT_KINDS: ReadonlySet<string> = new Set([
   'human-move',
   'model-move',
   'model-turn-effect',
+  'declare-result',
 ]);
 
 function isGameControllerIntentKind(kind: unknown): kind is GameControllerIntentV1['kind'] {
@@ -144,12 +145,21 @@ export interface ControllerMoveEventV1 {
   move: CoordinateMove;
 }
 
+/**
+ * A local, explicit final result. Offline play records the owner's decision; it does not
+ * depend on an opponent reply, provider request or online draw offer.
+ */
+export type GameResultDeclarationV1 =
+  | { readonly kind: 'draw' }
+  | { readonly kind: 'resignation'; readonly side: ClockSide };
+
 export type GameControllerIntentV1 =
   | { schemaVersion: 1; kind: 'begin-model-turn'; fence: ControllerFenceV1 }
   | { schemaVersion: 1; kind: 'queue-model-selection'; fence: ControllerFenceV1; candidate: ModelSelection }
   | { schemaVersion: 1; kind: 'cancel-model-selection' | 'resume-prior-model' | 'retry-model-selection'; fence: ControllerFenceV1 }
   | { schemaVersion: 1; kind: 'stop-model-turn'; fence: ControllerFenceV1 }
   | { schemaVersion: 1; kind: 'model-turn-interrupted'; fence: ControllerFenceV1; reason: ModelTurnInterruptionReasonV1 }
+  | { schemaVersion: 1; kind: 'declare-result'; fence: ControllerFenceV1; declaration: GameResultDeclarationV1 }
   | ControllerMoveEventV1
   | { schemaVersion: 1; kind: 'model-turn-effect'; fence: ControllerFenceV1; effect: ModelTurnDecision };
 
@@ -187,6 +197,8 @@ export interface GameController {
   undo(fence: ControllerFenceV1): Promise<ControllerSnapshotV1>;
   undoMove(fence: ControllerFenceV1): Promise<ControllerSnapshotV1>;
   takeback(fence: ControllerFenceV1): Promise<ControllerSnapshotV1>;
+  /** Records an explicit local draw or resignation as the game's final result. */
+  declareResult(fence: ControllerFenceV1, declaration: GameResultDeclarationV1): Promise<GameControllerIntentResultV1>;
   startPractice(fence: ControllerFenceV1, modelSelection: ModelSelection): Promise<ControllerSnapshotV1>;
   beginPractice(fence: ControllerFenceV1, modelSelection: ModelSelection): Promise<ControllerSnapshotV1>;
   queueModelSelection(fence: ControllerFenceV1, candidate: ModelSelection): Promise<ControllerSnapshotV1>;
@@ -507,6 +519,18 @@ function modelSideForCheckpoint(checkpoint: GameCheckpointV1): ClockSide | null 
   if (checkpoint.selections.players.white.kind === 'model') return 'white';
   if (checkpoint.selections.players.black.kind === 'model') return 'black';
   return null;
+}
+
+function readResultDeclaration(value: unknown): GameResultDeclarationV1 {
+  if (value === null || typeof value !== 'object') {
+    throw new GameControllerError('invalid-intent', 'The result declaration is invalid.');
+  }
+  const record = value as { kind?: unknown; side?: unknown };
+  if (record.kind === 'draw') return { kind: 'draw' };
+  if (record.kind === 'resignation' && (record.side === 'white' || record.side === 'black')) {
+    return { kind: 'resignation', side: record.side };
+  }
+  throw new GameControllerError('invalid-intent', 'The result declaration is invalid.');
 }
 
 function createFence(checkpoint: GameCheckpointV1): ControllerFenceV1 {
@@ -1785,6 +1809,12 @@ class IndexedGameController implements GameController {
   takeback(fence: ControllerFenceV1): Promise<ControllerSnapshotV1> {
     return this.enqueueControllerOperation(() => this.undoImplementation(fence));
   }
+  declareResult(
+    fence: ControllerFenceV1,
+    declaration: GameResultDeclarationV1,
+  ): Promise<GameControllerIntentResultV1> {
+    return this.dispatch({ schemaVersion: 1, kind: 'declare-result', fence, declaration });
+  }
 
   private async startPracticeImplementation(fence: ControllerFenceV1, modelSelection: ModelSelection): Promise<ControllerSnapshotV1> {
     const checkpoint = this.checkpoint;
@@ -1969,6 +1999,7 @@ class IndexedGameController implements GameController {
       return this.interruptModelTurn(intent.fence, intent.reason);
     }
     if (intent.kind === 'model-turn-effect') return this.applyModelTurnEffect(intent);
+    if (intent.kind === 'declare-result') return this.declareResultImplementation(intent.fence, intent.declaration);
     if (intent.kind === 'human-move' || intent.kind === 'model-move') return this.acceptMove(intent);
     throw new GameControllerError('invalid-intent', 'The controller intent kind is unsupported.');
   }
@@ -2458,6 +2489,79 @@ class IndexedGameController implements GameController {
       snapshot: committed.snapshot,
       request,
     };
+  }
+
+  private async declareResultImplementation(
+    fence: ControllerFenceV1,
+    declaration: GameResultDeclarationV1,
+  ): Promise<GameControllerIntentResultV1> {
+    const checkpoint = this.checkpoint;
+    if (checkpoint === null) {
+      throw new GameControllerError('setup-required', 'Initialize the game before declaring a result.');
+    }
+    const declared = readResultDeclaration(declaration);
+    const players = checkpoint.selections.players;
+    if (declared.kind === 'draw') {
+      if (players.white.kind !== 'human' && players.black.kind !== 'human') {
+        return { kind: 'rejected', reason: 'not-actionable', snapshot: this.snapshot() };
+      }
+    } else if (players[declared.side].kind !== 'human') {
+      return { kind: 'rejected', reason: 'wrong-side', snapshot: this.snapshot() };
+    }
+    const committed = await this.commitMutation<IntentMutationValue>(fence, (context) => {
+      const clockState = context.clockState;
+      if (clockState === null) return this.noClockCandidate(context, fence);
+      const reading = readClockAt(clockState, context.at, this.clockPolicy);
+      if (reading.status === 'expired') return this.expiryCandidate(context, fence, reading);
+      if (reading.status === 'reconciliation-required') {
+        return this.clockDiscrepancyCandidate(context, fence, reading);
+      }
+      const event = context.createEvent(
+        'game-declared-final',
+        context.decisionTimeMs,
+        fence,
+        declared.kind === 'draw'
+          ? { declaration: 'draw', reason: 'draw-agreement' }
+          : { declaration: 'resignation', resigningSide: declared.side, reason: 'resignation' },
+      );
+      const nextCheckpoint: GameCheckpointV1 = {
+        ...context.checkpoint,
+        revision: context.checkpoint.revision + 1,
+        requestGeneration: context.checkpoint.requestGeneration + 1,
+        analysisGeneration: context.checkpoint.analysisGeneration + 1,
+        result: declared.kind === 'draw'
+          ? { kind: 'final', winner: 'draw', reason: 'draw-agreement', eventId: event.eventId,
+              decidedAtMs: context.decisionTimeMs }
+          : { kind: 'final', winner: declared.side === 'white' ? 'black' : 'white', reason: 'resignation',
+              eventId: event.eventId, decidedAtMs: context.decisionTimeMs },
+        clocks: pausedClockCheckpoint(
+          clockState.timeControl,
+          reading.remaining,
+          context.decisionTimeMs,
+          clockState.schemaVersion,
+        ),
+        extensions: withHandoff(context.checkpoint, { producing: null, queued: null }),
+        archive: { ...context.checkpoint.archive, currentLine: { ...context.checkpoint.archive.currentLine,
+          eventIds: [...context.checkpoint.archive.currentLine.eventIds, event.eventId] } },
+      };
+      return {
+        checkpoint: nextCheckpoint,
+        position: context.position,
+        clockState: null,
+        value: { kind: 'accepted' as const },
+      };
+    });
+    // A final result fences every late provider or engine reply for this game.
+    this.activeRequest = null;
+    if (committed.value.kind === 'expired') return { kind: 'expired', snapshot: committed.snapshot };
+    if (committed.value.kind === 'clock-reconciliation-required') {
+      this.clockReconciliationRequired = true;
+      return { kind: 'clock-reconciliation-required', snapshot: committed.snapshot };
+    }
+    if (committed.value.kind === 'rejected') {
+      return { kind: 'rejected', reason: committed.value.reason, snapshot: committed.snapshot };
+    }
+    return { kind: 'accepted', snapshot: committed.snapshot };
   }
 
   private async stopModelTurn(fence: ControllerFenceV1): Promise<GameControllerIntentResultV1> {

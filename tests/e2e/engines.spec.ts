@@ -105,8 +105,24 @@ test('two browser engines use Lite evaluation, release workers after setup and S
   await expect(bar).toHaveAttribute('data-state', 'ready');
   await expect(bar).toHaveAttribute('data-engine', 'Stockfish 19 Lite');
   await expect.poll(() => workers.size).toBe(1);
+  const settledLabel = await bar.locator('.evaluation-score').textContent();
+  await bar.evaluate(button => {
+    const labels: string[] = [];
+    const record = () => {
+      labels.push(button.querySelector('.evaluation-score')?.textContent ?? '');
+      button.setAttribute('data-observed-labels', JSON.stringify(labels));
+    };
+    new MutationObserver(record).observe(button, { childList: true, subtree: true, characterData: true });
+    record();
+  });
   await page.getByRole('button', { name: 'First', exact: true }).click();
+  await expect(bar).toHaveAttribute('aria-busy', 'true');
+  await expect(bar.locator('.evaluation-score')).toHaveText(settledLabel!);
+  await expect(bar).toHaveAccessibleName(/Showing previous evaluation/);
   await expect(bar).toHaveAttribute('data-state', 'ready');
+  const observedLabels: string[] = JSON.parse((await bar.getAttribute('data-observed-labels'))!);
+  expect(observedLabels).not.toContain('…');
+  expect(observedLabels).not.toContain('');
   await expect(bar).toHaveAccessibleName(/White evaluation/);
   await page.getByRole('button', { name: 'Flip board', exact: true }).click();
   await expect(bar).toHaveClass(/reversed/);

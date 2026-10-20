@@ -226,6 +226,12 @@ textarea:focus-visible, summary:focus-visible {
 .promotion-panel { margin-top: 10px; padding: 14px; border: 1px solid var(--edge); border-radius: 8px; background: var(--panel); }
 .promotion-panel h2 { margin: 0; font-size: 15px; }
 .promotion-panel p { color: var(--dim); margin: 6px 0 12px; }
+.result-dialog-backdrop { position: fixed; inset: 0; z-index: 40; background: rgb(0 0 0 / .42); }
+.result-dialog { position: fixed; z-index: 41; top: 50%; left: 50%; width: min(420px, calc(100vw - 32px)); margin: 0; padding: 20px; transform: translate(-50%, -50%); border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); color: var(--ink); box-shadow: 0 18px 60px rgb(0 0 0 / .32); }
+.result-dialog h2 { margin: 0; font-size: 18px; letter-spacing: -.02em; }
+.result-dialog p { margin: 8px 0 18px; color: var(--dim); }
+.result-dialog-actions { justify-content: flex-end; }
+.result-dialog-actions .button { min-height: 44px; padding-inline: 16px; }
 .promotion-options { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 5px; }
 .feedback { position: sticky; bottom: 0; margin: 14px 0 0; padding: 8px 10px; min-height: 36px; color: var(--dim); background: color-mix(in srgb, var(--page), transparent 7%); }
 .feedback:empty { background: transparent; pointer-events: none; }

@@ -7,6 +7,7 @@ import type { ModelSelection } from '../controller/index.js';
 import { controllerRevisionForConfig } from './opponent-selection.js';
 import { IconButton } from './Icon.js';
 import { conciseError } from './concise-error.js';
+import { usesProviderRelay } from '../providers/transport.js';
 
 interface Props {
   readonly service: Promise<OpponentService>;
@@ -48,6 +49,8 @@ export function OpponentPanel({ service, connectionStore, onSelect, selected, id
   const operation = useRef<AbortController | null>(null);
   const mounted = useRef(false);
   const initialSelection = useRef(selected);
+  let relayed = false;
+  try { relayed = usesProviderRelay(baseUrl) || (catalogUrl.trim() !== '' && usesProviderRelay(catalogUrl)); } catch { /* The form validates incomplete addresses on submit. */ }
 
   // Saved destinations load their current catalog whenever this picker opens.
   useEffect(() => {
@@ -93,7 +96,14 @@ export function OpponentPanel({ service, connectionStore, onSelect, selected, id
       const credentials = await (await connectionStore).resolveCredentials(namespace, current);
       if (!active(controller)) return;
       setBound(credentials.status === 'bound');
-      if (credentials.status === 'bound') await catalog(current, controller);
+      if (credentials.status === 'bound') {
+        const endpoints = getConnectionEndpoints(current);
+        const needsRelay = usesProviderRelay(endpoints.generationUrl) || (endpoints.catalogUrl && usesProviderRelay(endpoints.catalogUrl));
+        // Show the relay notice before forwarding a legacy connection's saved
+        // key through a new intermediary, including for catalog requests.
+        const consent = needsRelay ? await (await connectionStore).getDisclosureChoice(namespace, current) : undefined;
+        if (!needsRelay || consent?.transport === 'site-relay') await catalog(current, controller);
+      }
     } catch (error) { if (active(controller)) setMessage(conciseError(error)); }
     finally { if (active(controller)) setBusy(false); }
   }
@@ -152,7 +162,7 @@ export function OpponentPanel({ service, connectionStore, onSelect, selected, id
     <div className="panel-heading"><h2 id={`${idPrefix}-setup-title`}>{page === 'models' ? 'Model' : page === 'consent' ? 'Allow connection?' : page === 'advanced' ? 'Settings' : 'Connect'}</h2>
       <div className="button-row">{page !== 'connection' && <IconButton icon="back" label="Connection" disabled={busy} onClick={() => { setPage('connection'); setMessage(''); }} />}{onClose && <IconButton icon="close" label="Close" onClick={onClose} />}</div></div>
     {page === 'consent' ? <div className="disclosure-panel">
-      <p>Send moves to <code>{profile && getConnectionEndpoints(profile).generationUrl}</code>?</p><p>Provider charges may apply.</p>
+      <p>Send moves to <code>{profile && getConnectionEndpoints(profile).generationUrl}</code>?</p><p>{relayed ? 'Requests and keys pass through this site.' : 'Provider charges may apply.'}</p>
       <div className="button-row"><button className="button primary" disabled={busy} onClick={() => void allow()}>Allow</button><button className="button secondary" disabled={busy} onClick={() => { setPage('models'); setModelId(''); }}>Cancel</button></div>
     </div> : page === 'models' ? <div className="connection-form">
       <label className="sr-label">Available models<select aria-label="Available models" disabled={busy || !entries.length} value={modelId} onChange={event => void choose(event.target.value)}>
@@ -172,6 +182,7 @@ export function OpponentPanel({ service, connectionStore, onSelect, selected, id
             setProvider(next); setProfile(null); setBound(false); setName(providers[next]); setBaseUrl(values[0]); setProtocol(values[1]); setAuthMode(values[2]); setCatalogUrl(''); setApiKey(''); invalidate();
           }}>{Object.entries(providers).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
           <label>Address<input aria-label="Base URL" type="url" autoCapitalize="none" autoComplete="url" spellCheck={false} required value={baseUrl} onChange={event => { setBaseUrl(event.target.value); setBound(false); invalidate(); }} /></label>
+          {relayed && <p>Requests and keys pass through this site.</p>}
           {authMode !== 'none' && <label>API key<input type="password" autoComplete="new-password" autoCapitalize="none" spellCheck={false} value={apiKey} required={!bound} placeholder={bound ? 'Saved' : ''} onChange={event => { setApiKey(event.target.value); invalidate(); }} /></label>}
           <div className="button-row"><button className="button primary" type="submit">{busy ? 'Connecting…' : 'Connect'}</button><IconButton icon="settings" label="Advanced connection settings" onClick={() => { setPage('advanced'); setMessage(''); }} /></div>
         </> : <>

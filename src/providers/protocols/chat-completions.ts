@@ -17,6 +17,7 @@ interface ChatState extends ProtocolDecoderState {
   doneSeen: boolean;
   finishReason: string | undefined;
   failed: boolean;
+  eventIndex: number;
 }
 
 export function createChatCompletionsDecoder(
@@ -27,6 +28,7 @@ export function createChatCompletionsDecoder(
     doneSeen: false,
     finishReason: undefined,
     failed: false,
+    eventIndex: -1,
   };
 
   return createSseProtocolDecoder(
@@ -95,13 +97,14 @@ function consumeChatEvent(
   base: ProtocolDecoderState,
 ): void {
   const state = base as ChatState;
+  state.eventIndex += 1;
 
   if (event.parseError !== undefined) {
-    state.malformed = true;
+    markMalformed(state, 'invalid-event-json-or-utf8');
     return;
   }
   if (state.doneSeen && event.data.length > 0) {
-    state.malformed = true;
+    markMalformed(state, 'data-after-done');
     return;
   }
   if (event.event !== 'message') {
@@ -117,7 +120,7 @@ function consumeChatEvent(
   }
 
   if (!isRecord(event.payload)) {
-    state.malformed = true;
+    markMalformed(state, 'invalid-payload');
     return;
   }
 
@@ -138,7 +141,7 @@ function consumeChatEvent(
     return;
   }
   if (!Array.isArray(payload.choices)) {
-    state.malformed = true;
+    markMalformed(state, 'invalid-choices');
     return;
   }
 
@@ -148,7 +151,7 @@ function consumeChatEvent(
       !Number.isInteger(rawChoice.index) ||
       (rawChoice.index as number) < 0
     ) {
-      state.malformed = true;
+      markMalformed(state, 'invalid-choice-index');
       continue;
     }
     const index = rawChoice.index as number;
@@ -164,12 +167,11 @@ function consumeChatEvent(
         : {};
     const finishReason = rawChoice.finish_reason;
     if (state.finishReason !== undefined) {
-      if (
-        finishReason !== state.finishReason ||
-        Object.keys(delta).length > 0
-      ) {
-        state.malformed = true;
-      }
+      // OpenRouter repeats the finish reason with empty content and role metadata
+      // in its final usage chunk. This is accounting, not additional output.
+      const usageOnlyFinish = (finishReason === null || finishReason === undefined) && isRecord(payload.usage);
+      if (finishReason !== state.finishReason && !usageOnlyFinish) markMalformed(state, 'conflicting-finish-reason');
+      if (!isContentFreeDelta(delta)) markMalformed(state, 'choice-output-after-finish');
       continue;
     }
 
@@ -178,7 +180,7 @@ function consumeChatEvent(
       delta.content !== null &&
       typeof delta.content !== 'string'
     ) {
-      state.malformed = true;
+      markMalformed(state, 'invalid-content');
     }
     appendString(state, 'answerText', delta.content);
     appendString(state, 'reasoningText', delta.reasoning);
@@ -196,8 +198,9 @@ function consumeChatEvent(
 
     if (typeof finishReason === 'string') {
       state.finishReason = finishReason;
+      if (!['stop', 'tool_calls', 'function_call', 'length', 'content_filter'].includes(finishReason)) markMalformed(state, 'unsupported-finish-reason');
     } else if (finishReason !== undefined && finishReason !== null) {
-      state.malformed = true;
+      markMalformed(state, 'invalid-finish-reason');
     }
   }
 }
@@ -248,6 +251,20 @@ function finalizeChat(state: ProtocolDecoderState): void {
   }
 
   classifyContent(chat);
+}
+
+function markMalformed(state: ChatState, reason: string): void {
+  state.malformed = true;
+  state.validationIssues.push({ eventIndex: state.eventIndex, reason });
+}
+
+function isContentFreeDelta(delta: Record<string, unknown>): boolean {
+  return Object.entries(delta).every(([key, value]) => {
+    if (key === 'role') return value === 'assistant';
+    if (['content', 'reasoning', 'reasoning_content', 'analysis', 'plan', 'refusal'].includes(key)) return value === null || value === '';
+    if (key === 'tool_calls' || key === 'reasoning_details') return value === null || (Array.isArray(value) && value.length === 0);
+    return false;
+  });
 }
 
 function classifyContent(state: ProtocolDecoderState): void {

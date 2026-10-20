@@ -5,7 +5,6 @@ deploy/
 backend/
 cmd/
 supabase/
-api/
 go.mod
 go.sum
 .env

@@ -48,6 +48,8 @@ export interface ProtocolStreamResult {
   toolRecords: readonly unknown[];
   otherChoices: readonly unknown[];
   unknownEvents: readonly ProtocolRawEvent[];
+  /** Structural rejection reasons only. No provider content or credentials. */
+  validationIssues?: readonly { readonly eventIndex: number; readonly reason: string }[];
   raw: {
     chunks: readonly Uint8Array[];
     events: readonly ProtocolRawEvent[];

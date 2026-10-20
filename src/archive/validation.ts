@@ -488,11 +488,12 @@ function readResult(value: unknown): GameResultV1 {
       'resignation',
       'illegal-move',
       'stalemate',
+      'draw-agreement',
     ] as const,
     'checkpoint.result.reason',
   );
-  if (reason === 'stalemate') {
-    if (winner !== 'draw') fail('checkpoint.result stalemate must have a draw winner.');
+  if (reason === 'stalemate' || reason === 'draw-agreement') {
+    if (winner !== 'draw') fail('checkpoint.result ' + reason + ' must have a draw winner.');
     return {
       kind,
       winner,

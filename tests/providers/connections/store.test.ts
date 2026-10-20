@@ -563,6 +563,23 @@ describe('device-local connection store', () => {
     expect(JSON.stringify(profile)).not.toContain('guest-key-canary');
   });
 
+  it('persists relay consent across an IndexedDB reopen', async () => {
+    const factory = new IDBFactory();
+    const options = { databaseName: 'relay-consent-fixture', factory };
+    const store = await openConnectionStore(options);
+    const guest = { kind: 'guest' } as const;
+    const profile = await createConnectionProfile({
+      id: 'ollama', name: 'Ollama', provider: 'custom', protocol: 'chat-completions',
+      baseUrl: 'https://ollama.com/v1', auth: { kind: 'bearer' },
+    });
+    await store.saveProfile(guest, profile);
+    await store.recordDisclosureChoice(guest, profile, { decision: 'accepted', recordedAtMs: 10 });
+    const reopened = await openConnectionStore(options);
+    const consent = await reopened.getDisclosureChoice(guest, profile);
+    expect(consent?.transport).toBe('site-relay');
+    expect(hasCurrentDisclosureConsent(profile, consent)).toBe(true);
+  });
+
   it('CON-04/DAT-08 persists profiles and local canaries in separate IndexedDB stores', async () => {
     const factory = new IDBFactory();
     const store = await openConnectionStore({ databaseName: 'kha34-idb-fixture', factory });

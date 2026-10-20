@@ -28,8 +28,16 @@ jobs:
     env:
       KHA41_TEST_DATABASE_URL: postgres://kha41_test:fixture-only@127.0.0.1:5432/kha41_test?sslmode=disable
       KHA41_REQUIRE_POSTGRES: '1'
+      KHA66_WORKER_ENTRY: ${{ github.workspace }}/build/rules-worker/worker.mjs
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:rules-worker
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod

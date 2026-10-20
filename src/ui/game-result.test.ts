@@ -4,8 +4,9 @@ import { MAX_ILLEGAL_MOVE_ATTEMPTS } from '../moves/budgets.js';
 import { describeResult } from './game-result.js';
 
 const label = (side: 'white' | 'black') => (side === 'white' ? 'Ada' : 'Claude');
-const final = (winner: 'white' | 'black' | 'draw', reason: Exclude<FinalResultReasonV1, 'stalemate'>): GameResultV1 =>
+const final = (winner: 'white' | 'black' | 'draw', reason: Exclude<FinalResultReasonV1, 'stalemate' | 'draw-agreement'>): GameResultV1 =>
   ({ kind: 'final', winner, reason, eventId: 'e1', decidedAtMs: 1 });
+const agreedDraw: GameResultV1 = { kind: 'final', winner: 'draw', reason: 'draw-agreement', eventId: 'e1', decidedAtMs: 1 };
 const describeFor = (result: GameResultV1, viewer: 'white' | 'black' | null = 'white') => describeResult(result, { label, viewer });
 
 describe('describeResult', () => {
@@ -24,6 +25,7 @@ describe('describeResult', () => {
     }
     const stalemate: GameResultV1 = { kind: 'final', winner: 'draw', reason: 'stalemate', eventId: 'e1', decidedAtMs: 1 };
     expect(describeFor(stalemate)).toMatchObject({ headline: 'Draw', detail: 'by stalemate' });
+    expect(describeFor(agreedDraw)).toMatchObject({ headline: 'Draw', detail: 'by agreement', tone: 'draw', announcement: 'Draw. by agreement.' });
   });
 
   it('keeps a drawn timeout a draw', () => {

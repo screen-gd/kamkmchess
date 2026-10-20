@@ -1,0 +1,33 @@
+{
+  "note": "The identifier shapes the public profile service issues and the browser contract parses. Both sides read this file, so a change to one shape cannot silently break the other.",
+  "profileIdPattern": "^kp_[A-Za-z0-9_-]{8,63}$",
+  "linkIdPattern": "^kl_[A-Za-z0-9_-]{8,63}$",
+  "proofIdPattern": "^kgp_[A-Za-z0-9_-]{8,63}$",
+  "usernamePattern": "^[A-Za-z0-9][A-Za-z0-9_-]{1,22}[A-Za-z0-9]$",
+  "avatarChoices": [
+    "ember",
+    "harbor",
+    "meadow",
+    "orchid",
+    "slate",
+    "sunrise",
+    "tide",
+    "violet"
+  ],
+  "reservedUsernames": [
+    "guest",
+    "guests",
+    "anonymous",
+    "deleted",
+    "admin",
+    "administrator",
+    "system",
+    "moderator",
+    "support",
+    "staff",
+    "official",
+    "root",
+    "null",
+    "undefined"
+  ]
+}

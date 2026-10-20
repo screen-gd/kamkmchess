@@ -67,6 +67,8 @@
   .minimal-workspace .focus-page :is(input, select, textarea),
   .minimal-workspace .focus-page .sr-label :is(input, select, textarea) { font-size: 16px; }
   .minimal-workspace .coordinate-form { display: grid; gap: 12px; margin: 0; }
+  .minimal-workspace .board-tools { gap: 2px; }
+  .minimal-workspace .board-tools .icon-button { flex: 1 1 44px; width: auto; min-width: 0; max-width: 44px; }
 }
 
 /* A short landscape viewport gives the moves and toolbar their own column. */

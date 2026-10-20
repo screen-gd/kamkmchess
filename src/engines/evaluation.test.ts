@@ -13,6 +13,20 @@ beforeEach(() => { mock.downloaded.mockResolvedValue(false); mock.download.mockR
 afterEach(() => vi.resetAllMocks());
 
 describe('spectator engine selection', () => {
+  it('publishes only the settled score after analysis finishes', async () => {
+    const onEvaluation = vi.fn();
+    const settled = { depth: 18, score: { kind: 'cp', value: 180 } };
+    mock.analyze.mockImplementationOnce(async (_settings, _position, publish) => {
+      publish({ depth: 1, score: { kind: 'cp', value: 0 } });
+      publish({ depth: 4, score: { kind: 'cp', value: -120 } });
+      publish(settled);
+      expect(onEvaluation).not.toHaveBeenCalled();
+    });
+    const evaluator = new PositionEvaluator();
+    await evaluator.evaluate(position, new AbortController().signal, onEvaluation, vi.fn());
+    expect(onEvaluation.mock.calls).toEqual([[settled, 'stockfish-lite']]);
+    evaluator.close();
+  });
   it('downloads only Lite when the full engine is absent', async () => {
     const evaluator = new PositionEvaluator();
     await evaluator.evaluate(position, new AbortController().signal, vi.fn(), vi.fn());
@@ -43,6 +57,7 @@ describe('spectator engine selection', () => {
     const controller = new AbortController();
     const onEvaluation = vi.fn();
     mock.analyze.mockImplementationOnce(async (_settings, _position, publish) => {
+      publish({ depth: 1, score: { kind: 'cp', value: 0 } });
       controller.abort(); publish({ depth: 1, score: { kind: 'cp', value: 20 } });
       throw new DOMException('Stopped', 'AbortError');
     });

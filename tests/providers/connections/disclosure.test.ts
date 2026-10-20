@@ -8,6 +8,22 @@ import {
 } from '../../../src/providers/connections';
 
 describe('first-request disclosure', () => {
+  it('discloses the site relay and requires renewed consent for previously direct remote connections', async () => {
+    const profile = await createConnectionProfile({
+      id: 'ollama', name: 'Ollama', provider: 'custom', protocol: 'chat-completions',
+      baseUrl: 'https://ollama.com/v1', auth: { kind: 'bearer' },
+    });
+    const view = createFirstRequestDisclosure(profile);
+    expect(view.body).toContain('through this site\'s relay');
+    expect(view.body).toContain('API key');
+    const consent = recordDisclosureChoice(profile, { decision: 'accepted', recordedAtMs: 10 });
+    expect(consent.transport).toBe('site-relay');
+    expect(hasCurrentDisclosureConsent(profile, consent)).toBe(true);
+    const legacy = { ...consent };
+    delete legacy.transport;
+    expect(hasCurrentDisclosureConsent(profile, legacy)).toBe(false);
+  });
+
   it('CON-07 supplies provider rules, consequences, quota use and the configured destination', async () => {
     const profile = await createConnectionProfile({ id: 'anthropic', name: 'Claude API', provider: 'anthropic' });
     const view = createFirstRequestDisclosure(profile);

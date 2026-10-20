@@ -55,6 +55,7 @@ export interface DisclosureDecisionRecord {
   readonly destinationUrl: string;
   readonly decision: DisclosureDecision;
   readonly recordedAtMs: number;
+  readonly transport?: 'site-relay';
 }
 
 export type CachedCatalogEntryState = 'advertised' | 'not-advertised' | 'stale';

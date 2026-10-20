@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes } from 'react';
 import {
   Add, Archive, ArrowsUpDown, Bot, Checkmark, ChevronLeft, ChevronRight,
-  Close, Download, Flag, Grid, Handshake, Home, Icon as QuartzIcon, Keyboard, List, Menu, Move, Play, Settings,
+  Close, Code, Download, Flag, Grid, Handshake, Home, Icon as QuartzIcon, Keyboard, Link, List, Menu, Move, Play, Save, Settings,
   SkipBackward, SkipForward, StopOutline, Swap, Trophy, Undo, User, UserAvatar,
 } from '../components/quartz/icon';
 
@@ -16,7 +16,9 @@ const icons = {
   change: Swap,
   check: Checkmark,
   close: Close,
+  code: Code,
   download: Download,
+  draw: Handshake,
   first: SkipBackward,
   flag: Flag,
   flip: ArrowsUpDown,
@@ -24,12 +26,15 @@ const icons = {
   home: Home,
   keyboard: Keyboard,
   last: SkipForward,
+  link: Link,
   menu: Menu,
   move: Move,
   moves: List,
   next: ChevronRight,
   play: Play,
   plus: Add,
+  resign: Flag,
+  save: Save,
   settings: Settings,
   stop: StopOutline,
   trophy: Trophy,
