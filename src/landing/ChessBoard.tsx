@@ -1,8 +1,7 @@
 import type { Chess } from 'chess.js';
-import { Icon, ChessBishop, ChessKing, ChessKnight, ChessPawn, ChessQueen, ChessRook } from '../components/quartz/icon';
 import type { Color } from '../rules/types';
+import { pieceImage } from '../ui/piece-image';
 
-const pieceIcons = { p: ChessPawn, n: ChessKnight, b: ChessBishop, r: ChessRook, q: ChessQueen, k: ChessKing };
 const pieceNames = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
 const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 
@@ -31,7 +30,7 @@ export function ChessBoard({ board, orientation, lastMove, label }: ChessBoardPr
           <div className="board-square" key={square} data-color={(rankIndex + fileIndex) % 2 === 0 ? 'light' : 'dark'} data-last-move={lastMove?.from === square || lastMove?.to === square || undefined} aria-hidden="true">
             {fileIndex === 0 && <span className="rank-label">{rank}</span>}
             {rankIndex === 7 && <span className="file-label">{file}</span>}
-            {piece && <span className="chess-piece" data-side={piece.color}><Icon icon={pieceIcons[piece.type]} size={32} /></span>}
+            {piece && <span className="chess-piece" data-side={piece.color}><img src={pieceImage(piece.color, piece.type)} alt="" /></span>}
           </div>
         );
       }))}

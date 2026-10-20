@@ -2,14 +2,14 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
 // Count rendered copy, selected options, and input text. Board coordinates,
-// chess notation, clocks, and screen-reader descriptions are game data.
+// chess notation, clocks, the model conversation transcript, and screen-reader descriptions are game data.
 // The shared navigation is outside each focused screen's copy budget.
 async function visibleWords(page: Page) {
   return page.evaluate(() => {
     const words: string[] = [];
     function walk(node: Node) {
       if (node instanceof Element) {
-        if (node.matches('script, style, svg, .sr-only, .game-options-sr-only, cg-board, coords, .clock, .move-list, [hidden]')) return;
+        if (node.matches('script, style, svg, .sr-only, .game-options-sr-only, cg-board, coords, .clock, .game-rail, .archive-page, .move-list, [hidden]')) return;
         const style = getComputedStyle(node);
         if (style.display === 'none' || style.visibility === 'hidden') return;
         if (node instanceof HTMLSelectElement) { words.push(node.selectedOptions[0]?.text ?? ''); return; }
@@ -67,9 +67,9 @@ test('focused screens stay compact and fit desktop and mobile', async ({ page },
     await budget(page);
     await page.screenshot({ path: testInfo.outputPath(`board-${width}.png`), fullPage: true });
     await page.getByRole('button', { name: 'New game', exact: true }).click();
-    await page.getByRole('button', { name: 'Settings', exact: true }).click(); await budget(page, 10);
-    await page.getByRole('button', { name: 'Position', exact: true }).click(); await budget(page, 10);
-    await page.getByRole('button', { name: 'Edit starting position', exact: true }).click();
+    await page.locator('.right-game-sidebar').getByRole('button', { name: 'Settings', exact: true }).click(); await budget(page, 10);
+    await page.locator('.focus-page').getByRole('button', { name: 'Position', exact: true }).click(); await budget(page, 10);
+    await page.getByRole('button', { name: 'New game from here', exact: true }).click();
     await expect(page.getByRole('group', { name: 'Visual starting position board' })).toBeVisible();
     await expect(page.getByRole('complementary', { name: 'Position settings' })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -77,7 +77,7 @@ test('focused screens stay compact and fit desktop and mobile', async ({ page },
     await page.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(page.getByRole('complementary', { name: 'Moves' })).toBeVisible(); await budget(page, 10);
     await page.getByRole('button', { name: 'New game', exact: true }).click();
-    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.locator('.right-game-sidebar').getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByRole('button', { name: 'Conversation and archive', exact: true }).click(); await budget(page, 10);
     await page.getByRole('button', { name: 'Close', exact: true }).click();
   }

@@ -11,10 +11,10 @@ test('editing the current position reopens setup while the drawer is still closi
   await page.goto('/play');
   await page.addStyleTag({ content: '.right-game-sidebar { transition: none !important; } .right-game-sidebar[data-ending-style] { animation: hold-drawer-close 30s linear; } @keyframes hold-drawer-close { from { opacity: 1; } to { opacity: 1; } }' });
   await page.getByRole('button', { name: 'New game', exact: true }).click();
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.locator('.right-game-sidebar').getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.locator('.right-game-sidebar')).toHaveAttribute('data-ending-style', '');
-  await page.getByRole('button', { name: 'Position', exact: true }).click();
-  await page.getByRole('button', { name: 'Edit starting position', exact: true }).click();
+  await page.locator('.focus-page').getByRole('button', { name: 'Position', exact: true }).click();
+  await page.getByRole('button', { name: 'New game from here', exact: true }).click();
   await expect(page.getByRole('group', { name: 'Visual starting position board' })).toBeVisible();
   await expect(page.getByLabel('Custom starting position (six-field FEN)')).toHaveValue('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
 });

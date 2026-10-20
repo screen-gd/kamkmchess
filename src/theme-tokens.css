@@ -1,0 +1,12 @@
+/* Surfaces and edges derived from the active palette, so both appearances and every
+   T3 theme get a readable hierarchy. applyTheme sets --paper, --surface, --ink and
+   --soft on the document element before either entry renders. */
+:root {
+  --page: var(--paper);
+  --panel: var(--surface);
+  --panel-raised: var(--soft);
+  --edge: color-mix(in srgb, var(--ink) 16%, var(--paper));
+  --edge-strong: color-mix(in srgb, var(--ink) 34%, var(--paper));
+  --board-light: #ebecd0;
+  --board-dark: #779556;
+}

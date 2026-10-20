@@ -19,12 +19,19 @@ import { isEngineSelection, runEngineTurn } from '../engines/local.js';
 import { BROWSER_ENGINES, stopBrowserEngines, stopUnusedBrowserEngines } from '../engines/browser.js';
 import { engineSettings } from '../engines/local.js';
 import { IconButton } from './Icon.js';
+import { GameResultCard } from './GameResultCard.js';
+import { describeResult } from './game-result.js';
+import type { ResultTone } from './game-result.js';
+import { isSoundEnabled, playResultSound, setSoundEnabled } from './sounds.js';
+import type { SoundCue } from './sounds.js';
+import { pieceImage } from './piece-image.js';
 import { conciseError, conciseTurnError } from './concise-error.js';
 import { controllerRevisionForConfig, matchesOpponentSelection } from './opponent-selection.js';
 import { getGenerationJournal } from '../integration/generation-runner.js';
 import type { GenerationJournalV1 } from '../integration/generation-runner.js';
 import type { HandoffSnapshotV1, OpponentIdentityV1 } from '../opponents/index.js';
 import { RightGameSidebar } from '../navigation/RightGameSidebar.js';
+import { LeftGameRail } from '../navigation/LeftGameRail.js';
 import { readSidebarPreferences } from '../navigation/sidebar-preferences.js';
 import { NewGameSetup } from './NewGameSetup.js';
 import type { NewGameDraft, StartedSidebarGame } from './NewGameSetup.js';
@@ -45,15 +52,33 @@ function formatClock(milliseconds: number): string {
   const total = Math.max(0, Math.ceil(milliseconds / 1_000));
   return Math.floor(total / 60) + ':' + (total % 60).toString().padStart(2, '0');
 }
+const RESULT_CUES: Record<ResultTone, SoundCue> = { win: 'win', loss: 'loss', draw: 'draw', neutral: 'draw' };
+
+function playerName(snapshot: ControllerSnapshotV1, side: 'white' | 'black'): string {
+  const player = snapshot.checkpoint.selections.players[side];
+  return isEngineSelection(player) ? BROWSER_ENGINES[engineSettings(player).engineId].name
+    : player.kind === 'model' ? player.modelRoutingId : side === 'white' ? 'White' : 'Black';
+}
+const PRACTICE_REASONS = new Set<string>(['resignation', 'illegal-move', 'timeout']);
+const PROJECT_URL = 'https://github.com/Kamkmgamer/kamkmchess';
+
+function humanSide(snapshot: ControllerSnapshotV1): 'white' | 'black' | null {
+  const { white, black } = snapshot.checkpoint.selections.players;
+  return white.kind === 'human' && black.kind === 'model' ? 'white' : black.kind === 'human' && white.kind === 'model' ? 'black' : null;
+}
+function resultOf(snapshot: ControllerSnapshotV1) {
+  return describeResult(snapshot.checkpoint.result, { label: side => playerName(snapshot, side), viewer: humanSide(snapshot) });
+}
+function finalEventId(snapshot: ControllerSnapshotV1): string | null {
+  return snapshot.checkpoint.result.kind === 'final' ? snapshot.checkpoint.result.eventId : null;
+}
+/** One line for non-final states and the live region; final and pending results come from describeResult. */
 function statusLabel(snapshot: ControllerSnapshotV1): string {
   if (snapshot.readiness === 'restore-recovery-pending') return 'Restoring saved game';
   if (snapshot.readiness === 'expiry-persistence-pending') return 'Saving clock result';
   if (snapshot.readiness === 'clock-reconciliation-required') return 'Clock needs review';
-  if (snapshot.checkpoint.result.kind === 'final') {
-    const result = snapshot.checkpoint.result;
-    return result.winner === 'draw' ? 'Draw' : (result.winner === 'white' ? 'White' : 'Black') + ' wins';
-  }
-  if (snapshot.checkpoint.result.kind === 'pending-adjudication') return 'Position check pending';
+  const result = resultOf(snapshot);
+  if (result) return result.announcement;
   return (snapshot.position.sideToMove === 'w' ? 'White' : 'Black') + ' to move';
 }
 
@@ -66,6 +91,8 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
   const [coordinate, setCoordinate] = useState('');
   const [coordinateError, setCoordinateError] = useState('');
   const [feedback, setFeedback] = useState('');
+  const [sound, setSound] = useState(isSoundEnabled);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [promotion, setPromotion] = useState<PromotionMove | null>(null);
   const [setupOpen, setSetupOpen] = useState(() => new URLSearchParams(window.location.search).get('setup') === 'new' || !readSidebarPreferences().collapsed);
   const [setupRequest, setSetupRequest] = useState(0);
@@ -73,7 +100,6 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
   const [setupFocus, setSetupFocus] = useState<'opponent' | 'time' | 'position' | null>(null);
   const [setupDraft, setSetupDraft] = useState<NewGameDraft | undefined>();
   const [tool, setTool] = useState<'settings' | 'position' | 'archive' | 'move' | null>(null);
-  const [toolPage, setToolPage] = useState(0);
   const [working, setWorking] = useState(false);
   const checkedIdentities = useRef(new Map<string, OpponentIdentityV1>());
   const [modelSelection, setModelSelection] = useState<ModelSelection | null>(null);
@@ -91,6 +117,7 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
   const practiceController = useRef<AbortController | null>(null);
   const generationFenceKey = useRef('');
   const sessionRef = useRef(session);
+  const announcedResult = useRef(finalEventId(initialSnapshot));
   const movesPanel = useRef<HTMLElement>(null);
   const boardPanel = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -568,23 +595,31 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
   const players = snapshot.checkpoint.selections.players;
   const spectator = players.white.kind === 'model' && players.black.kind === 'model';
   const recoverySelection = spectator ? activePlayer : players.white.kind === 'model' ? players.white : players.black;
-  const humanColor = players.white.kind === 'human' && players.black.kind === 'model' ? 'white'
-    : players.black.kind === 'human' && players.white.kind === 'model' ? 'black' : null;
+  const humanColor = humanSide(snapshot);
   const premoveColor = !history.reviewing && !final && !setupOpen && !promotion &&
     snapshot.readiness === 'ready' && snapshot.clockReading?.status === 'running' ? humanColor : null;
   const allowPremove = premoveColor !== null && isModelTurn && !working;
-  const playerLabel = (side: 'white' | 'black') => {
-    const player = snapshot.checkpoint.selections.players[side];
-    return isEngineSelection(player) ? BROWSER_ENGINES[engineSettings(player).engineId].name
-      : player.kind === 'model' ? player.modelRoutingId : side === 'white' ? 'White' : 'Black';
-  };
+  const playerLabel = (side: 'white' | 'black') => playerName(snapshot, side);
+  const finalResult = final ? resultOf(snapshot) : null;
+  const finalEvent = finalEventId(snapshot);
+  const finalTone = finalResult?.tone;
+  useEffect(() => {
+    if (finalEvent === null || finalTone === undefined || finalEvent === announcedResult.current) return;
+    announcedResult.current = finalEvent;
+    playResultSound(RESULT_CUES[finalTone]);
+  }, [finalEvent, finalTone]);
   const archiveText = [
     ...(generationJournal?.retainedMessages.map(message => `${message.role}: ${message.content}`) ?? []),
     ...(generationJournal?.discardedMessages.map(message => `Undone ${message.role}: ${message.content}`) ?? []),
   ].join('\n\n');
-  const archiveWords = archiveText.split(/\s+/).filter(Boolean);
-  const openTool = (next: typeof tool) => { setTool(next); setToolPage(0); setFeedback(''); setCoordinateError(''); };
+  const openTool = (next: typeof tool) => { setTool(next); setFeedback(''); setCoordinateError(''); };
   const focusPage = tool !== null || recoveryOpen;
+  const result = snapshot.checkpoint.result;
+  const practiceOffered = result.kind === 'final' && PRACTICE_REASONS.has(result.reason) && result.winner === humanColor;
+  const downloadGame = () => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ checkpoint: snapshot.checkpoint, conversation: generationJournal }, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a'); link.href = url; link.download = `chess-${session.gameId}.json`; link.click(); URL.revokeObjectURL(url);
+  };
   const showEvaluation = spectator && !focusPage && !setupOpen;
   const acceptSidebarGame = ({ session: nextSession, snapshot: started, identities, draft }: StartedSidebarGame) => {
     setSetupDraft(draft);
@@ -604,6 +639,8 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
     setFeedback('New game saved.');
   };
   return <>
+    <LeftGameRail tool={tool} recoveryOpen={recoveryOpen} showConversation={Object.values(players).some(player => player.kind === 'model' && !isEngineSelection(player))} menuOpen={menuOpen} onMenuOpenChange={setMenuOpen}
+      onNewGame={() => openSetup()} onBoard={() => { setTool(null); setRecoveryOpen(false); }} onTool={openTool} onDownload={downloadGame} onAccount={onOpenAccount} />
     <RightGameSidebar open={setupOpen} onOpenChange={setSetupOpen} showReopenButton={false}>
       {close => <>
         <NewGameSetup key={setupRequest} composition={composition} draft={setupDraft} startingFen={setupStartingFen} focus={setupFocus} onStarted={game => { acceptSidebarGame(game); close(); }} />
@@ -614,8 +651,7 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
     {!focusPage && <header className="topbar">
       <a className="wordmark" href="/" aria-label="Kamkm Chess home">kamkm chess</a>
       <div className="topbar-actions">
-        {onOpenAccount && <IconButton icon="account" label="Account and saved games" onClick={onOpenAccount} />}
-        {!setupOpen && <IconButton icon="settings" label="Settings" onClick={() => openTool('settings')} />}
+        <IconButton icon="menu" label="Open menu" aria-haspopup="dialog" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)} />
         <button className="button primary" type="button" onClick={() => openSetup()} aria-label="New game">New</button></div>
     </header>}
     {tool && <section className="focus-page" aria-label="Match tools">
@@ -623,14 +659,13 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
       {tool === 'settings' && <div className="connection-form">
         <label>Theme<select value={theme} onChange={event => setTheme(event.target.value)}>{T3_PALETTES.map(palette => <option key={palette.id} value={palette.id}>{palette.label}</option>)}</select></label>
         <label>Appearance<select value={appearance} onChange={event => setAppearance(event.target.value)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
-        <div className="button-row"><IconButton icon="board" label="Position" onClick={() => openTool('position')} /><IconButton icon="archive" label="Conversation and archive" onClick={() => openTool('archive')} /><IconButton icon="download" label="Download match archive" onClick={() => {
-          const url = URL.createObjectURL(new Blob([JSON.stringify({ checkpoint: snapshot.checkpoint, conversation: generationJournal }, null, 2)], { type: 'application/json' }));
-          const link = document.createElement('a'); link.href = url; link.download = `chess-${session.gameId}.json`; link.click(); URL.revokeObjectURL(url);
-        }} /></div>
+        <label>Sound<select value={sound ? 'on' : 'off'} onChange={event => { const enabled = event.target.value === 'on'; setSound(enabled); setSoundEnabled(enabled); }}><option value="on">On</option><option value="off">Off</option></select></label>
+        <div className="button-row"><IconButton icon="board" label="Position" onClick={() => openTool('position')} /><IconButton icon="archive" label="Conversation and archive" onClick={() => openTool('archive')} /><IconButton icon="download" label="Download game (JSON)" onClick={downloadGame} /></div>
+        <div className="settings-links"><a href="/#questions">Help</a><a href={PROJECT_URL}>Project</a></div>
       </div>}
       {tool === 'move' && <form className="coordinate-form" onSubmit={submitCoordinate}><label className="sr-label" htmlFor="coordinate-move">Enter a move by coordinates</label><input id="coordinate-move" aria-label="Enter a move by coordinates" value={coordinate} onChange={event => { setCoordinate(event.target.value); setCoordinateError(''); }} placeholder="e2e4" autoComplete="off" autoCapitalize="none" spellCheck={false} enterKeyHint="go" /><button className="button primary" type="submit" aria-label="Play move" disabled={disabled}>Play</button>{coordinateError && <p role="alert">{coordinateError}</p>}</form>}
-      {tool === 'position' && <><p className="fen-value">{history.position.fen}</p><IconButton icon="board" label="Edit starting position" onClick={() => openSetup(history.position.fen)} /></>}
-      {tool === 'archive' && <><pre className="archive-page">{archiveWords.length ? archiveWords.slice(toolPage * 8, (toolPage + 1) * 8).join(' ') : 'No conversation yet.'}</pre><div className="button-row"><IconButton icon="back" label="Previous page" disabled={toolPage === 0} onClick={() => setToolPage(page => page - 1)} /><IconButton icon="next" label="Next page" disabled={(toolPage + 1) * 8 >= archiveWords.length} onClick={() => setToolPage(page => page + 1)} /></div></>}
+      {tool === 'position' && <><p className="fen-value">{history.position.fen}</p><IconButton icon="board" label="New game from here" onClick={() => openSetup(history.position.fen)} /></>}
+      {tool === 'archive' && <pre className="archive-page">{archiveText || 'No conversation yet.'}</pre>}
     </section>}
     {recoveryOpen && !setupOpen && !tool && <section className="focus-page" aria-label={isEngineSelection(recoverySelection) ? "Choose another engine" : "Choose another model"}>
       <div className="focus-nav"><IconButton icon="close" label="Close" onClick={() => setRecoveryOpen(false)} /></div>
@@ -643,25 +678,25 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
       <section className="board-column" id="board" ref={boardPanel} tabIndex={-1} aria-label="Chess match board">
         {(['black', 'white'] as const).map(side => <div key={side} className={`player-row ${side} ${side === orientation ? 'near-player' : 'far-player'} ${activeSide === side ? 'active' : ''}`}>
           <OpponentBadge player={players[side]} side={side} /><div className="player-name"><strong title={playerLabel(side)}>{playerLabel(side)}</strong></div>
-          <time className={`clock ${activeSide === side ? 'running' : ''}`} aria-label={`${side} clock ${formatClock(clocks[`${side}Ms`])}`}>{formatClock(clocks[`${side}Ms`])}</time>
+          <time className={`clock ${activeSide === side ? 'running' : ''}`} data-low={clocks[`${side}Ms`] < 20_000 || undefined} aria-label={`${side} clock ${formatClock(clocks[`${side}Ms`])}`}>{formatClock(clocks[`${side}Ms`])}</time>
         </div>)}
         <div className={`playing-board${showEvaluation ? ' with-evaluation' : ''}`}>
           {showEvaluation && <EvaluationBar key={session.gameId} orientation={orientation} startingFen={snapshot.checkpoint.rules.startingFen}
             moves={snapshot.checkpoint.rules.moves.slice(0, history.ply).map(move => `${move.from}${move.to}${move.promotion ?? ''}`).join(' ')} />}
           <ChessBoard orientation={orientation} snapshot={snapshot} disabled={disabled} visible={!focusPage} onMove={attemptBoardMove} view={history} premoveColor={premoveColor} allowPremove={allowPremove} />
-          {promotion && <section className="promotion-panel" aria-label="Promotion"><div className="promotion-options">{PROMOTIONS.map(piece => <button className="button quiet" type="button" key={piece.value} aria-label={piece.label} autoFocus={piece.value === 'q'} onClick={() => selectPromotion(piece.value)}><img alt="" width="36" height="36" src={new URL(`./pieces/${snapshot.position.sideToMove}${piece.value}.svg`, import.meta.url).href} /></button>)}<IconButton icon="close" label="Cancel promotion" onClick={() => setPromotion(null)} /></div></section>}
+          {promotion && <section className="promotion-panel" aria-label="Promotion"><div className="promotion-options">{PROMOTIONS.map(piece => <button className="button quiet" type="button" key={piece.value} aria-label={piece.label} autoFocus={piece.value === 'q'} onClick={() => selectPromotion(piece.value)}><img alt="" width="36" height="36" src={pieceImage(snapshot.position.sideToMove, piece.value)} /></button>)}<IconButton icon="close" label="Cancel promotion" onClick={() => setPromotion(null)} /></div></section>}
         </div>
         <nav hidden={setupOpen} className="board-tools" aria-label="Board tools"><IconButton icon="flip" label="Flip board" onClick={() => setOrientation(side => side === 'white' ? 'black' : 'white')} />
           <IconButton icon="undo" label="Undo" onClick={() => void undo()} disabled={working || snapshot.readiness !== 'ready' || !snapshot.checkpoint.rules.moves.length || snapshot.checkpoint.result.kind !== 'unresolved'} />
-          <IconButton icon="code" label="Type a move" disabled={disabled} onClick={() => openTool('move')} />
+          <IconButton icon="keyboard" label="Type a move" disabled={disabled} onClick={() => openTool('move')} />
           <div className="mobile-history-tools">
             <IconButton icon="back" label="Previous move" disabled={history.ply === 0} onClick={() => history.select(history.ply - 1)} />
             <IconButton icon="next" label="Next move" disabled={!history.reviewing} onClick={() => history.select(history.ply + 1)} />
             <IconButton icon="moves" label="Show moves" aria-controls="moves-panel" onClick={() => { movesPanel.current?.focus({ preventScroll: true }); movesPanel.current?.scrollIntoView({ block: 'start' }); }} />
           </div>
         </nav>
-        <div className="match-status" role="status" aria-description={generationDetail || feedback}>
-          <h2 className="status-heading" aria-label={generationState === 'producing' ? isEngineSelection(activePlayer) ? 'Engine is choosing a move' : 'AI is choosing a move' : undefined}>{history.reviewing ? `${history.ply}/${history.count}` : generationState === 'stopped' ? 'Paused' : generationState === 'failed' ? conciseTurnError(new Error(generationDetail)) : generationState === 'producing' ? generationDetail === 'Checking connection…' ? 'Checking…' : 'Thinking…' : statusLabel(snapshot)}</h2>
+        <div className="match-status" data-tone={finalResult?.tone} role="status" aria-description={generationDetail || feedback}>
+          {finalResult ? <div className="status-result"><h2 className="status-heading">{finalResult.headline}</h2><p className="status-detail">{finalResult.detail}</p></div> : <h2 className="status-heading" aria-label={generationState === 'producing' ? isEngineSelection(activePlayer) ? 'Engine is choosing a move' : 'AI is choosing a move' : undefined}>{history.reviewing ? `${history.ply}/${history.count}` : generationState === 'stopped' ? 'Paused' : generationState === 'failed' ? conciseTurnError(new Error(generationDetail)) : generationState === 'producing' ? generationDetail === 'Checking connection…' ? 'Checking…' : 'Thinking…' : statusLabel(snapshot)}</h2>}
           <div className="button-row">
             {generationState === 'producing' && <IconButton icon="stop" label="Stop generation" onClick={() => void stopModelTurn()} />}
             {isModelTurn && !autoGeneration && !final && generationState === 'idle' && <IconButton icon="play" label={isEngineSelection(activePlayer) ? "Resume engine turn" : "Resume model turn"} onClick={retryModelTurn} />}
@@ -671,11 +706,12 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
             </>}
             {!final && Object.values(players).some(player => player.kind === 'model') && <IconButton icon="change" label={isEngineSelection(recoverySelection) ? "Choose another engine" : "Choose another model"} onClick={() => setRecoveryOpen(true)} />}
             {snapshot.modelHandoff.queued && <IconButton icon="close" label="Cancel queued model" onClick={() => void cancelQueuedModel()} />}
-            {final && snapshot.checkpoint.result.kind === 'final' && snapshot.checkpoint.result.winner !== 'draw' && !spectator && !Object.values(players).some(isEngineSelection) && Object.values(players).some(player => player.kind === 'model') && <IconButton icon="play" label="Start practice from this position" disabled={working} onClick={() => void beginPractice()} />}
+            {practiceOffered && !spectator && !Object.values(players).some(isEngineSelection) && Object.values(players).some(player => player.kind === 'model') && <IconButton icon="play" label="Start practice from this position" disabled={working} onClick={() => void beginPractice()} />}
           </div>
         </div>
       </section>
       <aside className="moves-sidebar" id="moves-panel" ref={movesPanel} tabIndex={-1} aria-labelledby="moves-title">
+        {finalResult && <GameResultCard result={finalResult} onNewGame={() => openSetup()} />}
         <div className="moves-heading"><h2 id="moves-title">Moves</h2><span className="count" aria-label={`Move ${history.ply} of ${history.count}`}>{history.ply}/{history.count}</span>
           <span className="mobile-board-return"><IconButton icon="board" label="Show board" aria-controls="board" onClick={() => { boardPanel.current?.focus({ preventScroll: true }); boardPanel.current?.scrollIntoView({ block: 'start' }); }} /></span>
         </div>

@@ -7,7 +7,7 @@ import '@lichess-org/chessground/assets/chessground.base.css';
 import type { ControllerSnapshotV1 } from '../controller/index.js';
 import { legalMoves } from '../rules/index.js';
 import type { CoordinateMove, Position, Square } from '../rules/index.js';
-import { isSquare } from './board-input.js';
+import { checkedColor, isSquare } from './board-input.js';
 
 function squareDescription(position: Position, square: Square): string {
   const piece = position.pieces.find((item) => item.square === square);
@@ -150,8 +150,8 @@ export function ChessBoard({ orientation, snapshot, disabled, visible, onMove, v
   }, [premove]);
 
   useEffect(() => {
-    board.current?.set({ fen, lastMove: lastFrom && lastTo ? [lastFrom, lastTo] : [] });
-  }, [fen, lastFrom, lastTo]);
+    board.current?.set({ fen, lastMove: lastFrom && lastTo ? [lastFrom, lastTo] : [], check: checkedColor(view.position) ?? false });
+  }, [fen, lastFrom, lastTo, view.position]);
   useEffect(() => {
     const instance = board.current;
     if (!instance) return;

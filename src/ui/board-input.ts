@@ -1,5 +1,6 @@
 import type { ControllerSnapshotV1, GameController, GameControllerIntentResultV1, ModelSelection } from '../controller/index.js';
-import type { CoordinateMove, Promotion, Square } from '../rules/index.js';
+import { isSquareAttackedInFen } from '../rules/index.js';
+import type { CoordinateMove, Position, Promotion, Square } from '../rules/index.js';
 
 const SQUARE = /^[a-h][1-8]$/;
 
@@ -16,6 +17,15 @@ export function parseCoordinateMove(value: string): CoordinateMove | null {
 
 export function isSquare(value: string): value is Square {
   return SQUARE.test(value);
+}
+
+/** The side to move is in check when the opposing colour attacks its king. Returns a Chessground colour, or undefined. */
+export function checkedColor(position: Position): 'white' | 'black' | undefined {
+  const king = position.pieces.find((piece) => piece.type === 'k' && piece.color === position.sideToMove);
+  if (!king) return undefined;
+  const attacker = position.sideToMove === 'w' ? 'b' : 'w';
+  if (!isSquareAttackedInFen(position.fen, king.square, attacker)) return undefined;
+  return position.sideToMove === 'w' ? 'white' : 'black';
 }
 
 /** All board input reaches the controller through this fenced human-move intent. */

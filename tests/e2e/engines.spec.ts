@@ -148,12 +148,12 @@ test('a finished engine match releases its opponent workers and keeps the board 
   await page.getByLabel('Custom starting position (six-field FEN)').fill('7k/5Q2/6K1/8/8/8/8/8 w - - 0 1');
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   await page.getByRole('button', { name: 'Start game', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'White wins', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'White won', exact: true })).toBeVisible();
   await expect(page.locator('.evaluation-bar')).toHaveAttribute('data-state', 'ready');
   await expect(page.locator('.evaluation-bar')).toHaveAttribute('data-engine', 'Stockfish 19 Lite');
   await expect.poll(() => workers.size).toBe(1);
   const boardWidth = (await page.locator('cg-board').boundingBox())!.width;
-  await page.getByRole('button', { name: 'New game', exact: true }).click();
+  await page.locator('.game-rail, .topbar').getByRole('button', { name: 'New game', exact: true }).click();
   await expect.poll(() => workers.size).toBe(0);
   await expect.poll(async () => (await page.locator('cg-board').boundingBox())!.width).toBeGreaterThanOrEqual(boardWidth - 1);
   await page.screenshot({ path: testInfo.outputPath('finished-engine-board-with-drawer.png') });
@@ -200,13 +200,13 @@ test('two LLMs alternate with separate routing IDs and side-specific plans', asy
   await expect.poll(() => page.locator('.player-row img').evaluateAll(images => images.every(image =>
     image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0))).toBe(true);
   await page.getByRole('button', { name: 'New game', exact: true }).click();
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.locator('.right-game-sidebar').getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('combobox', { name: 'Appearance', exact: true }).selectOption('light');
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.setViewportSize({ width: 1280, height: 1000 });
   await page.screenshot({ path: testInfo.outputPath('opponent-logos-desktop.png'), fullPage: true });
   await page.getByRole('button', { name: 'New game', exact: true }).click();
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.locator('.right-game-sidebar').getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('combobox', { name: 'Appearance', exact: true }).selectOption('dark');
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -214,7 +214,7 @@ test('two LLMs alternate with separate routing IDs and side-specific plans', asy
   await page.setViewportSize({ width: 320, height: 700 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   for (const badge of await page.locator('.player-row .opponent-logo').all()) {
-    expect((await badge.boundingBox())?.width).toBe(30);
+    expect((await badge.boundingBox())?.width).toBe(32);
   }
   await page.reload();
   await expect(page.locator('.player-row').getByRole('img', { name: 'ChatGPT logo' })).toBeVisible();

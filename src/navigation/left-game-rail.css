@@ -1,0 +1,26 @@
+.game-rail { display: none; }
+.game-rail, .game-rail-drawer { box-sizing: border-box; flex-direction: column; gap: 16px; padding: 20px 16px; overflow-y: auto; overscroll-behavior: contain; background: var(--t3-sidebar, var(--panel)); border-inline-end: 1px solid var(--t3-sidebar-border, var(--edge)); color: var(--t3-sidebar-foreground, var(--ink)); }
+.game-rail-drawer { position: fixed; inset: 0 auto 0 0; z-index: 61; display: flex; width: min(300px, calc(100% - 32px)); padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: max(12px, env(safe-area-inset-bottom)); outline: none; }
+.game-rail-backdrop { position: fixed; inset: 0; z-index: 60; background: rgb(0 0 0 / .55); }
+.rail-drawer-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; font-size: 16px; font-weight: 600; }
+.game-rail .wordmark { font-size: 18px; padding: 4px 12px; }
+.rail-new { width: 100%; min-height: 44px; }
+.rail-nav, .rail-bottom { display: grid; gap: 4px; }
+.rail-bottom { margin-top: auto; }
+.rail-link { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; font-weight: 600; text-align: left; text-decoration: none; cursor: pointer; transition: background-color 120ms ease; }
+.rail-link:hover { background: var(--t3-sidebar-row-hover, var(--panel-raised)); }
+.rail-link[aria-current='page'] { background: var(--t3-sidebar-row-selected, var(--panel-raised)); font-weight: 700; }
+.rail-link[aria-current='page']::before { content: ''; position: absolute; inset-block: 8px; inset-inline-start: 0; width: 3px; background: var(--green); border-radius: 2px; }
+@media (min-width: 1001px) {
+  .game-rail { position: fixed; inset: 0 auto 0 0; z-index: 30; display: flex; width: var(--rail, 256px); }
+  .game-rail-drawer, .game-rail-backdrop { display: none; }
+}
+@media (min-width: 1001px) and (max-height: 800px) {
+  .game-rail { gap: 10px; padding: 12px; }
+  .game-rail .rail-link { min-height: 40px; }
+  .game-rail .rail-new { min-height: 40px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .game-rail-drawer { transition: translate 180ms cubic-bezier(.16, 1, .3, 1); }
+  .game-rail-drawer:is([data-starting-style], [data-ending-style]) { translate: -100% 0; }
+}

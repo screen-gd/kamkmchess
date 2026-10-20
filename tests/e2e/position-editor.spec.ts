@@ -118,7 +118,7 @@ for (const appearance of ['light', 'dark'] as const) {
     await page.setViewportSize(appearance === 'light' ? { width: 1280, height: 900 } : { width: 390, height: 844 });
     await page.goto('/play');
     await page.getByRole('button', { name: 'New game', exact: true }).click();
-    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.locator('.right-game-sidebar').getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByRole('combobox', { name: /Appearance/ }).selectOption(appearance);
     await page.getByRole('button', { name: 'Close', exact: true }).click();
     await page.getByRole('button', { name: 'New game', exact: true }).click();

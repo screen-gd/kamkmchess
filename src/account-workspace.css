@@ -16,7 +16,7 @@
 .account-privacy-link { display: flex; width: fit-content; align-items: center; min-height: 44px; margin-top: 12px; color: var(--dim); font-size: 12px; text-underline-offset: 3px; }
 @media (max-width: 760px), (max-width: 1000px) and (max-height: 500px) {
   .account-workspace { width: 100%; min-height: 100dvh; margin-block: 0; padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); overflow-wrap: anywhere; }
-  .account-workspace > .panel-heading { position: sticky; top: 0; z-index: 20; min-height: 56px; background: var(--paper); }
+  .account-workspace > .panel-heading { position: sticky; top: 0; z-index: 20; min-height: 56px; background: var(--page); }
   .account-workspace button { min-width: 44px; min-height: 44px; touch-action: manipulation; }
   .account-workspace :is(input, select, textarea) { font-size: 16px; }
 }

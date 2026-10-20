@@ -4,7 +4,15 @@ import { openGameStore } from '../storage/index.js';
 import { getOrCreateGameController } from '../controller/index.js';
 import { checkProofEvidence, PROOF_CHECKER_VERSION, RULES_ADAPTER_VERSION } from '../proofs/index.js';
 import type { ProofEvidence } from '../proofs/index.js';
-import { isLocalBoardInputDisabled, parseCoordinateMove, startClassifiedLocalGame, submitBoardMove } from './board-input.js';
+import { parsePosition } from '../rules/index.js';
+import { checkedColor, isLocalBoardInputDisabled, parseCoordinateMove, startClassifiedLocalGame, submitBoardMove } from './board-input.js';
+
+describe('checkedColor', () => {
+  it('names the side to move only when its king is attacked', () => {
+    expect(checkedColor(parsePosition('4k3/8/8/8/8/8/4r3/4K3 w - - 0 1'))).toBe('white');
+    expect(checkedColor(parsePosition('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'))).toBeUndefined();
+  });
+});
 
 describe('board input to controller seam', () => {
   it('parses coordinate entry and commits white and black moves through the game controller', async () => {

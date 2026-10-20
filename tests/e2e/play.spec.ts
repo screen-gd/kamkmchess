@@ -78,10 +78,10 @@ async function selectModel(page: Page, model = 'offline-candidate') {
   await expect.poll(async () => await page.getByText('Ready', { exact: true }).isVisible() || await page.locator('.match-layout').isVisible()).toBe(true);
 }
 async function archivedText(page: Page) {
-  await page.getByRole('button', { name: 'New game', exact: true }).click();
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.locator('.game-rail, .topbar').getByRole('button', { name: 'New game', exact: true }).click();
+  await page.locator('.right-game-sidebar').getByRole('button', { name: 'Settings', exact: true }).click();
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Download match archive', exact: true }).click();
+  await page.locator('.focus-page').getByRole('button', { name: 'Download game (JSON)', exact: true }).click();
   const stream = await (await download).createReadStream();
   let text = ''; for await (const chunk of stream) text += chunk.toString();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
@@ -208,7 +208,7 @@ test('finishes a legal AI match, preserves plans, restores its result and fits m
     await expect(movesOnBoard(page)).toHaveCount(count);
   }
   await move(page, 'h5f7');
-  await expect(page.getByRole('heading', { name: 'White wins', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'White won', exact: true })).toBeVisible();
   expect(fixture.calls).toHaveLength(4);
   expect(JSON.stringify(fixture.modelCalls[1])).toContain('retained plan 1');
   expect(JSON.stringify(fixture.modelCalls[1])).toContain('retained reasoning 1');
@@ -222,7 +222,7 @@ test('finishes a legal AI match, preserves plans, restores its result and fits m
     expect(JSON.stringify(call)).not.toContain('opaque-provider-record');
   }
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'White wins', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'White won', exact: true })).toBeVisible();
   await expect(movesOnBoard(page)).toHaveCount(7);
   expect(fixture.calls).toHaveLength(4);
   expect(await archivedText(page)).toContain('retained plan 1');
@@ -239,7 +239,7 @@ test('starts with a model playing White and offers practice after that model res
   await configure(page, 'black');
   await expect(movesOnBoard(page)).toHaveCount(1);
   await move(page, 'e7e5');
-  await expect(page.getByRole('heading', { name: 'Black wins', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Black won', exact: true })).toBeVisible();
   expect(fixture.modelCalls).toHaveLength(2);
   await page.reload();
   await page.getByRole('button', { name: 'Start practice from this position' }).click();

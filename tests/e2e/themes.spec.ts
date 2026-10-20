@@ -110,7 +110,7 @@ test('theme choices persist through reload and both directions of navigation', a
   await expect(page.locator('html')).toHaveAttribute('data-appearance', 'dark');
   await page.goto('/play');
   await page.getByRole('button', { name: 'New game', exact: true }).click();
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.locator('.right-game-sidebar').getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Theme', exact: true })).toHaveValue('screen');
   await expect(page.getByRole('combobox', { name: 'Appearance', exact: true })).toHaveValue('dark');
   await page.getByRole('combobox', { name: 'Theme', exact: true }).selectOption('ocean');
@@ -141,7 +141,7 @@ test('mobile appearance follows the system and synchronizes changes from another
   const other = await context.newPage();
   await other.goto('/play');
   await other.getByRole('button', { name: 'New game', exact: true }).click();
-  await other.getByRole('button', { name: 'Settings', exact: true }).click();
+  await other.locator('.right-game-sidebar').getByRole('button', { name: 'Settings', exact: true }).click();
   await other.getByRole('combobox', { name: 'Theme', exact: true }).selectOption('iris');
   await other.getByRole('combobox', { name: 'Appearance', exact: true }).selectOption('dark');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'iris');

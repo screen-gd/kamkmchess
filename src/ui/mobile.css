@@ -15,12 +15,12 @@
     max-width: 640px;
     margin-bottom: 0;
     padding: env(safe-area-inset-top) 0 0;
-    background: var(--paper);
+    background: var(--page);
   }
   .minimal-workspace .topbar-actions { gap: 4px; }
   .minimal-workspace .topbar .button { min-height: 44px; }
   .minimal-workspace .match-layout { grid-template-columns: minmax(0, 1fr); max-width: 640px; gap: 12px; }
-  .minimal-workspace .player-row { height: 48px; padding: 4px; gap: 8px; }
+  .minimal-workspace .player-row { height: 44px; padding: 4px 0; gap: 8px; }
   .minimal-workspace .clock { min-width: 76px; padding: 6px 8px; font-size: 23px; }
   .minimal-workspace .playing-board.with-evaluation { grid-template-columns: 22px minmax(0, 1fr); gap: 4px; }
   .minimal-workspace .board-tools {
@@ -32,13 +32,14 @@
     padding: 8px max(12px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
     gap: 4px;
     align-items: center;
-    border-top: 1px solid var(--rule);
-    background: var(--paper);
+    border-top: 1px solid var(--edge);
+    background: var(--page);
   }
   .mobile-history-tools { display: contents; }
   .mobile-board-return { display: flex; }
   .minimal-workspace .icon-button { width: 44px; height: 44px; flex-basis: 44px; touch-action: manipulation; }
   .minimal-workspace .match-status { min-height: 48px; padding: 0 4px; gap: 8px; flex-wrap: wrap; }
+  .minimal-workspace .match-status[data-tone] { min-height: 60px; padding: 6px 4px 6px 14px; }
   .minimal-workspace .status-heading { min-width: 0; overflow-wrap: anywhere; }
   .minimal-workspace .match-status .button-row { gap: 0; margin-left: auto; }
   .minimal-workspace .moves-sidebar {
@@ -52,10 +53,15 @@
   .minimal-workspace .moves-heading .count { margin-left: auto; }
   .minimal-workspace .move-list button { min-height: 44px; }
   .minimal-workspace .moves-sidebar .history-controls { padding: 4px 8px; }
+  .minimal-workspace .game-result-card { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 12px 8px 15px; }
+  .minimal-workspace .game-result-glyph { width: 28px; height: 28px; }
+  .minimal-workspace .game-result-glyph svg { width: 22px; height: 22px; }
+  .minimal-workspace .game-result-headline { font-size: 16px; }
+  .minimal-workspace .game-result-card .button { width: auto; min-height: 40px; }
   .minimal-workspace .history-controls .icon-button { width: 44px; flex-basis: 44px; }
   .minimal-workspace .moves-sidebar:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
   .minimal-workspace .focus-page { margin: 0 auto; padding: 12px 8px 24px; }
-  .minimal-workspace .focus-page > :is(.panel-heading, .focus-nav) { position: sticky; top: 0; z-index: 20; padding-top: env(safe-area-inset-top); background: var(--paper); }
+  .minimal-workspace .focus-page > :is(.panel-heading, .focus-nav) { position: sticky; top: 0; z-index: 20; padding-top: env(safe-area-inset-top); background: var(--page); }
   .minimal-workspace .focus-page .panel-heading h2 { margin-block: 12px; }
   .minimal-workspace .focus-page .button { min-height: 44px; }
   .minimal-workspace .focus-page :is(input, select, textarea),
@@ -72,6 +78,7 @@
   .minimal-workspace .player-badge, .minimal-workspace .opponent-logo { width: 26px; height: 26px; }
   .minimal-workspace .clock { padding-block: 4px; font-size: 20px; }
   .minimal-workspace .match-status { min-height: 44px; }
+  .minimal-workspace .match-status[data-tone] { min-height: 60px; }
   .minimal-workspace .moves-sidebar { height: calc(100dvh - 132px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); min-height: 140px; }
   .minimal-workspace .board-tools {
     left: auto;
@@ -84,4 +91,9 @@
   .minimal-workspace .playing-board .promotion-options { display: grid; grid-template-columns: repeat(2, 44px); }
   .minimal-workspace .playing-board .promotion-options > .button { height: 44px; }
   .minimal-workspace .playing-board .promotion-options > .icon-button { grid-column: 1 / -1; width: 100%; }
+}
+
+/* Stacked on a phone the strip right under the board already carries the result; the topbar keeps New. */
+@media (max-width: 760px) {
+  .minimal-workspace .game-result-card { display: none; }
 }
