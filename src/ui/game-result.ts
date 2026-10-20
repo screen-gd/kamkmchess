@@ -22,7 +22,7 @@ const PENDING_WORDS: Record<PendingResultReasonV1, string> = {
 };
 
 function sentence(headline: string, detail: string): string {
-  return detail ? `${headline}. ${detail}.` : `${headline}.`;
+  return detail ? `${headline}. ${detail.charAt(0).toUpperCase()}${detail.slice(1)}.` : `${headline}.`;
 }
 
 /**

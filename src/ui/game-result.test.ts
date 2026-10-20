@@ -21,11 +21,17 @@ describe('describeResult', () => {
       ['dead-position', 'draw', 'Draw', 'by insufficient material'],
     ] as const;
     for (const [reason, winner, headline, detail] of cases) {
-      expect(describeFor(final(winner, reason))).toMatchObject({ headline, detail, announcement: `${headline}. ${detail}.` });
+      expect(describeFor(final(winner, reason))).toMatchObject({ headline, detail, announcement: `${headline}. ${detail.charAt(0).toUpperCase()}${detail.slice(1)}.` });
     }
     const stalemate: GameResultV1 = { kind: 'final', winner: 'draw', reason: 'stalemate', eventId: 'e1', decidedAtMs: 1 };
     expect(describeFor(stalemate)).toMatchObject({ headline: 'Draw', detail: 'by stalemate' });
-    expect(describeFor(agreedDraw)).toMatchObject({ headline: 'Draw', detail: 'by agreement', tone: 'draw', announcement: 'Draw. by agreement.' });
+    expect(describeFor(agreedDraw)).toMatchObject({ headline: 'Draw', detail: 'by agreement', tone: 'draw', announcement: 'Draw. By agreement.' });
+  });
+
+  it('keeps the visible detail lowercase while the announcement capitalises it', () => {
+    const result = describeFor(final('white', 'checkmate'));
+    expect(result?.detail).toBe('by checkmate');
+    expect(result?.announcement).toBe('White won. By checkmate.');
   });
 
   it('keeps a drawn timeout a draw', () => {
