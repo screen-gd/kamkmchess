@@ -1,6 +1,8 @@
 Kaneo chess pieces
 
-Piece set "Kaneo" by Kadagaden, from https://github.com/Kadagaden/chess-pieces, licensed under CC BY 4.0. Used for the match board, promotion panel, position editor and landing preview.
+Piece set "Kaneo" by Kadagaden, inspired by the Neo pieces of chess.com, licensed under CC BY 4.0.
+Source: https://github.com/Kadagaden/chess-pieces/tree/b035b0cc6a68e9fb99c872c8fe073c3ae3eba8a0/chess_kaneo
+The SVG artwork is unchanged. The twelve filenames are lowercased, fixed 50mm width and height attributes are removed for responsive sizing, and a source and attribution comment is added. The corresponding source is included in src/ui/pieces/kaneo/.
 
 Attribution 4.0 International
 

@@ -8,6 +8,8 @@ import type { ControllerSnapshotV1 } from '../controller/index.js';
 import { legalMoves } from '../rules/index.js';
 import type { CoordinateMove, Position, Square } from '../rules/index.js';
 import { checkedColor, isSquare } from './board-input.js';
+import { pieceImageVariables } from './piece-image.js';
+import { usePieceStyle } from './use-piece-style.js';
 
 function squareDescription(position: Position, square: Square): string {
   const piece = position.pieces.find((item) => item.square === square);
@@ -36,6 +38,7 @@ export function ChessBoard({ orientation, snapshot, disabled, visible, onMove, v
   readonly premoveColor: 'white' | 'black' | null;
   readonly allowPremove: boolean;
 }) {
+  const pieceStyle = usePieceStyle();
   const [keyboardOrigin, setKeyboardOrigin] = useState<{ square: Square; fen: string } | null>(null);
   const [premove, setPremove] = useState<{ from: Key; to: Key } | null>(null);
   const host = useRef<HTMLDivElement>(null);
@@ -176,7 +179,7 @@ export function ChessBoard({ orientation, snapshot, disabled, visible, onMove, v
 
   return (
     <div className="board-frame">
-      <div className="board-host cg-wrap" ref={host} role="img" aria-label="Chessboard. Use the coordinate move controls or inspect a square."
+      <div className="board-host cg-wrap" ref={host} style={pieceImageVariables(pieceStyle)} role="img" aria-label="Chessboard. Use the coordinate move controls or inspect a square."
         onContextMenu={(event) => { event.preventDefault(); board.current?.cancelMove(); }} />
       {premove && premoveColor && <div className="premove-notice" role="status" aria-label={`Premove ${premove.from} to ${premove.to} queued.`}>
         <span className="sr-only">Premove</span>

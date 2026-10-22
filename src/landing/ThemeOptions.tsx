@@ -1,5 +1,6 @@
 import { T3_PALETTES } from '../ui/t3-palettes.js';
 import type { useTheme } from '../use-theme.js';
+import { PieceStyleOptions } from '../ui/PieceStyleOptions.js';
 
 export function ThemeOptions({ theme, appearance, setTheme, setAppearance }: ReturnType<typeof useTheme>) {
   return (
@@ -16,6 +17,7 @@ export function ThemeOptions({ theme, appearance, setTheme, setAppearance }: Ret
           <option value="dark">Dark</option>
         </select>
       </label>
+      <PieceStyleOptions />
     </div>
   );
 }

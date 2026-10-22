@@ -3,6 +3,7 @@ import type { PointerEvent } from 'react';
 import type { PieceType, Square } from '../rules/index.js';
 import { Icon } from './Icon.js';
 import { pieceImage } from './piece-image.js';
+import { usePieceStyle } from './use-piece-style.js';
 import { editPositionFen, movePositionPiece, readEditorPieces } from './position-editor.js';
 import type { EditorPiece } from './position-editor.js';
 
@@ -36,6 +37,7 @@ export function PositionEditorBoard({ fen, flipped, onFlip, onChange, onError }:
   readonly onChange: (fen: string) => void;
   readonly onError: (error: unknown) => void;
 }) {
+  const pieceStyle = usePieceStyle();
   const [tool, setTool] = useState<Tool>('move');
   const [selection, setSelection] = useState<{ square: Square; fen: string } | null>(null);
   const selected = selection?.fen === fen ? selection.square : null;
@@ -103,7 +105,7 @@ export function PositionEditorBoard({ fen, flipped, onFlip, onChange, onError }:
       return <button className={`editor-piece-choice${tool === piece ? ' selected' : ''}`} key={piece} type="button"
         aria-label={`Place ${color === 'w' ? 'white' : 'black'} ${name}`} aria-pressed={tool === piece} title={`Place ${color === 'w' ? 'white' : 'black'} ${name}`}
         draggable={false} disabled={!pieces} onPointerDown={event => startDrag(event, color, type, null)} onClick={() => chooseTool(piece)}>
-        <img alt="" draggable={false} src={pieceImage(color, type)} />
+        <img alt="" draggable={false} src={pieceImage(color, type, pieceStyle)} />
       </button>;
     })}
   </div>;
@@ -135,7 +137,7 @@ export function PositionEditorBoard({ fen, flipped, onFlip, onChange, onError }:
             type="button" key={square} data-editor-square={square} draggable={false} aria-label={`${square}, ${pieceName}`} aria-pressed={selected === square}
             onPointerDown={event => { if (piece && tool !== 'empty') startDrag(event, piece.color, piece.type, square); }}
             onClick={() => clickSquare(square)} onContextMenu={event => { event.preventDefault(); edit(() => editPositionFen(fen, square, 'empty')); }}>
-            {piece && <img alt="" draggable={false} src={pieceImage(piece.color, piece.type)} />}
+            {piece && <img alt="" draggable={false} src={pieceImage(piece.color, piece.type, pieceStyle)} />}
             {column === 0 && <span className="editor-coordinate rank-coordinate">{rank}</span>}
             {row === 7 && <span className="editor-coordinate file-coordinate">{file}</span>}
           </button>;
@@ -153,7 +155,7 @@ export function PositionEditorBoard({ fen, flipped, onFlip, onChange, onError }:
       <div className="editor-palette-heading">Pieces <span>Drag or select, then place</span></div>
       {tray('w')}{tray('b')}
     </div>
-    {drag && <img className="editor-drag-piece" alt="" draggable={false} src={pieceImage(drag.color, drag.type)}
+    {drag && <img className="editor-drag-piece" alt="" draggable={false} src={pieceImage(drag.color, drag.type, pieceStyle)}
       style={{ left: drag.x, top: drag.y, width: drag.size, height: drag.size }} />}
   </div>;
 }

@@ -150,18 +150,18 @@ textarea:focus-visible, summary:focus-visible {
 .board-host.orientation-white coords.files coord:nth-child(even),
 .board-host.orientation-black coords.ranks coord:nth-child(odd),
 .board-host.orientation-black coords.files coord:nth-child(odd) { color: var(--board-dark); }
-.board-host piece.white.king { background-image: url('./pieces/wk.svg'); }
-.board-host piece.white.queen { background-image: url('./pieces/wq.svg'); }
-.board-host piece.white.rook { background-image: url('./pieces/wr.svg'); }
-.board-host piece.white.bishop { background-image: url('./pieces/wb.svg'); }
-.board-host piece.white.knight { background-image: url('./pieces/wn.svg'); }
-.board-host piece.white.pawn { background-image: url('./pieces/wp.svg'); }
-.board-host piece.black.king { background-image: url('./pieces/bk.svg'); }
-.board-host piece.black.queen { background-image: url('./pieces/bq.svg'); }
-.board-host piece.black.rook { background-image: url('./pieces/br.svg'); }
-.board-host piece.black.bishop { background-image: url('./pieces/bb.svg'); }
-.board-host piece.black.knight { background-image: url('./pieces/bn.svg'); }
-.board-host piece.black.pawn { background-image: url('./pieces/bp.svg'); }
+.board-host piece.white.king { background-image: var(--piece-wk); }
+.board-host piece.white.queen { background-image: var(--piece-wq); }
+.board-host piece.white.rook { background-image: var(--piece-wr); }
+.board-host piece.white.bishop { background-image: var(--piece-wb); }
+.board-host piece.white.knight { background-image: var(--piece-wn); }
+.board-host piece.white.pawn { background-image: var(--piece-wp); }
+.board-host piece.black.king { background-image: var(--piece-bk); }
+.board-host piece.black.queen { background-image: var(--piece-bq); }
+.board-host piece.black.rook { background-image: var(--piece-br); }
+.board-host piece.black.bishop { background-image: var(--piece-bb); }
+.board-host piece.black.knight { background-image: var(--piece-bn); }
+.board-host piece.black.pawn { background-image: var(--piece-bp); }
 .board-inspection { margin-top: 8px; color: var(--dim); font-size: 12px; }
 .board-inspection summary { cursor: pointer; width: max-content; }
 .square-grid { display: grid; grid-template-columns: repeat(8, minmax(25px, 1fr)); max-width: 400px; margin-top: 8px; }

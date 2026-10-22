@@ -26,6 +26,8 @@ import type { ResultTone } from './game-result.js';
 import { isSoundEnabled, playResultSound, setSoundEnabled } from './sounds.js';
 import type { SoundCue } from './sounds.js';
 import { pieceImage } from './piece-image.js';
+import { PieceStyleOptions } from './PieceStyleOptions.js';
+import { usePieceStyle } from './use-piece-style.js';
 import { conciseError, conciseTurnError } from './concise-error.js';
 import { controllerRevisionForConfig, matchesOpponentSelection } from './opponent-selection.js';
 import { getGenerationJournal } from '../integration/generation-runner.js';
@@ -91,6 +93,7 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
   const [orientation, setOrientation] = useState<'white' | 'black'>(() =>
     initialSnapshot.checkpoint.selections.players.white.kind === 'model' && initialSnapshot.checkpoint.selections.players.black.kind === 'human' ? 'black' : 'white');
   const { theme, setTheme, appearance, setAppearance } = useTheme();
+  const pieceStyle = usePieceStyle();
   const [coordinate, setCoordinate] = useState('');
   const [coordinateError, setCoordinateError] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -705,6 +708,7 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
       {tool === 'settings' && <div className="connection-form">
         <label>Theme<select value={theme} onChange={event => setTheme(event.target.value)}>{T3_PALETTES.map(palette => <option key={palette.id} value={palette.id}>{palette.label}</option>)}</select></label>
         <label>Appearance<select value={appearance} onChange={event => setAppearance(event.target.value)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+        <PieceStyleOptions />
         <label>Sound<select value={sound ? 'on' : 'off'} onChange={event => { const enabled = event.target.value === 'on'; setSound(enabled); setSoundEnabled(enabled); }}><option value="on">On</option><option value="off">Off</option></select></label>
         <div className="button-row"><IconButton icon="board" label="Position" onClick={() => openTool('position')} /><IconButton icon="archive" label="Conversation and archive" onClick={() => openTool('archive')} /><IconButton icon="download" label="Download game (JSON)" onClick={downloadGame} /></div>
         <div className="settings-links"><a href="/#questions">Help</a><a href={PROJECT_URL}>Project</a></div>
@@ -730,7 +734,7 @@ export function App({ composition, initialSession, initialSnapshot, onOpenAccoun
           {showEvaluation && <EvaluationBar key={session.gameId} orientation={orientation} startingFen={snapshot.checkpoint.rules.startingFen}
             moves={snapshot.checkpoint.rules.moves.slice(0, history.ply).map(move => `${move.from}${move.to}${move.promotion ?? ''}`).join(' ')} />}
           <ChessBoard orientation={orientation} snapshot={snapshot} disabled={disabled} visible={!focusPage} onMove={attemptBoardMove} view={history} premoveColor={premoveColor} allowPremove={allowPremove} />
-          {promotion && <section className="promotion-panel" aria-label="Promotion"><div className="promotion-options">{PROMOTIONS.map(piece => <button className="button quiet" type="button" key={piece.value} aria-label={piece.label} autoFocus={piece.value === 'q'} onClick={() => selectPromotion(piece.value)}><img alt="" width="36" height="36" src={pieceImage(snapshot.position.sideToMove, piece.value)} /></button>)}<IconButton icon="close" label="Cancel promotion" onClick={() => setPromotion(null)} /></div></section>}
+          {promotion && <section className="promotion-panel" aria-label="Promotion"><div className="promotion-options">{PROMOTIONS.map(piece => <button className="button quiet" type="button" key={piece.value} aria-label={piece.label} autoFocus={piece.value === 'q'} onClick={() => selectPromotion(piece.value)}><img alt="" width="36" height="36" src={pieceImage(snapshot.position.sideToMove, piece.value, pieceStyle)} /></button>)}<IconButton icon="close" label="Cancel promotion" onClick={() => setPromotion(null)} /></div></section>}
         </div>
         <nav hidden={setupOpen} className="board-tools" aria-label="Board tools"><IconButton icon="flip" label="Flip board" onClick={() => setOrientation(side => side === 'white' ? 'black' : 'white')} />
           <IconButton icon="undo" label="Undo" onClick={() => void undo()} disabled={working || snapshot.readiness !== 'ready' || !snapshot.checkpoint.rules.moves.length || snapshot.checkpoint.result.kind !== 'unresolved'} />

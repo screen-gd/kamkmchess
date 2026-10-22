@@ -163,7 +163,7 @@ export function App() {
             <Dialog.Title>{panel.kind === 'navigation' ? 'kamkm chess' : 'Appearance'}</Dialog.Title>
             <Dialog.Close render={<Button variant="ghost" size="icon-lg" aria-label="Close menu" />}><Icon icon={Close} /></Dialog.Close>
           </div>
-          <Dialog.Description className="visually-hidden">{panel.kind === 'navigation' ? 'Explore chess, set up a game or find help.' : 'Choose a theme and light, dark or system appearance.'}</Dialog.Description>
+          <Dialog.Description className="visually-hidden">{panel.kind === 'navigation' ? 'Explore chess, set up a game or find help.' : 'Choose a theme, appearance and chess piece style.'}</Dialog.Description>
           {panel.kind === 'navigation'
             ? <GameNavigation onOptions={openGameOptions} onNavigate={closeNavigation} onAppearance={openAppearance} account={account} onAccount={openAccountSettings} />
             : <ThemeOptions {...theme} />}
